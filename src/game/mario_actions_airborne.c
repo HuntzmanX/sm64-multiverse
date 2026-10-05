@@ -452,13 +452,18 @@ s32 act_jump(struct MarioState *m) {
         return set_mario_action(m, ACT_GROUND_POUND, 0);
     }
 
-    if (m->input & INPUT_A_PRESSED) {
+    // Don't allow the same A press that started the original jump
+    // to immediately trigger the mid-air double jump.
+    if ((m->input & INPUT_A_PRESSED) && m->actionTimer > 0) {
         return set_mario_action(m, ACT_MIDAIR_DOUBLE_JUMP, 0);
     }
+
+    m->actionTimer++;
 
     play_mario_sound(m, SOUND_ACTION_TERRAIN_JUMP, 0);
     common_air_action_step(m, ACT_JUMP_LAND, MARIO_ANIM_SINGLE_JUMP,
                            AIR_STEP_CHECK_LEDGE_GRAB | AIR_STEP_CHECK_HANG);
+
     return FALSE;
 }
 
