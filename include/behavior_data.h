@@ -409,6 +409,7 @@ extern const BehaviorScript bhvWingCap[];
 extern const BehaviorScript bhvMetalCap[];
 extern const BehaviorScript bhvNormalCap[];
 extern const BehaviorScript bhvVanishCap[];
+extern const BehaviorScript bhvSlideCap[];
 extern const BehaviorScript bhvStar[];
 extern const BehaviorScript bhvStarSpawnCoordinates[];
 extern const BehaviorScript bhvHiddenRedCoinStar[];
