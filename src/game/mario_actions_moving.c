@@ -255,7 +255,7 @@ s32 update_sliding(struct MarioState *m, f32 stopSpeed) {
             break;
     }
     if (m->flags & MARIO_SLIDE_CAP) {
-    lossFactor = 1.0f;
+    lossFactor = 1.1f;
     }
 
     oldSpeed = sqrtf(m->slideVelX * m->slideVelX + m->slideVelZ * m->slideVelZ);
