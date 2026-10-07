@@ -1,0 +1,1 @@
+// This level uses vertex colors and has no local textures.

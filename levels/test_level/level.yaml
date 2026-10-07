@@ -1,0 +1,13 @@
+# Test Level
+short-name: test_level
+full-name: Test Level
+texture-file: ["/texture.inc.c"]
+area-count: 1
+objects: []
+shared-path: []
+# loaded files
+skybox-bin: water
+texture-bin: generic
+effects: false
+actor-bins: [group3, group14]
+common-bin: [common0]

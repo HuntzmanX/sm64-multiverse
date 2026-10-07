@@ -1,0 +1,15 @@
+const MacroObject test_level_macro_objs[] = {
+    MACRO_OBJECT(/*preset*/ macro_breakable_box_no_coins, /*yaw*/ 0, /*pos*/ -1200, 0, -3000),
+    MACRO_OBJECT(/*preset*/ macro_breakable_box_small,    /*yaw*/ 0, /*pos*/  -600, 0, -3000),
+    MACRO_OBJECT(/*preset*/ macro_box_wing_cap,           /*yaw*/ 0, /*pos*/     0, 0, -3000),
+    MACRO_OBJECT(/*preset*/ macro_box_metal_cap,          /*yaw*/ 0, /*pos*/   600, 600, -3000),
+    MACRO_OBJECT(/*preset*/ macro_box_vanish_cap,         /*yaw*/ 0, /*pos*/  1200, 600, -3000),
+    MACRO_OBJECT(/*preset*/ macro_box_slide_cap,          /*yaw*/ 0, /*pos*/  1800, 600, -3000),
+    MACRO_OBJECT(/*preset*/ macro_box_koopa_shell,        /*yaw*/ 0, /*pos*/  2400, 600, -3000),
+    MACRO_OBJECT(/*preset*/ macro_goomba_triplet_spawner, /*yaw*/ 0, /*pos*/     0, 0, -5000),
+    MACRO_OBJECT(/*preset*/ macro_bobomb,                 /*yaw*/ 0, /*pos*/ -2400, 0, -4800),
+    MACRO_OBJECT(/*preset*/ macro_recovery_heart,         /*yaw*/ 0, /*pos*/  3000, 100, -4800),
+    MACRO_OBJECT(/*preset*/ macro_coin_line_horizontal,   /*yaw*/ 0, /*pos*/ -3750, 800, -1000),
+    MACRO_OBJECT(/*preset*/ macro_coin_line_horizontal,   /*yaw*/ 0, /*pos*/  3500, 500, -1000),
+    MACRO_OBJECT_END(),
+};

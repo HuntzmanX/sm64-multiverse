@@ -103,7 +103,7 @@ struct MacroPreset MacroObjectPresets[] = {
     {bhvJumpingBox, MODEL_BREAKABLE_BOX, 0},
     {bhvTripletButterfly, MODEL_BUTTERFLY, 0},
     {bhvTripletButterfly, MODEL_BUTTERFLY, 4},
-    {bhvYellowCoin, MODEL_YELLOW_COIN, 0},
+    {bhvExclamationBox, MODEL_EXCLAMATION_BOX, 15},
     {bhvYellowCoin, MODEL_YELLOW_COIN, 0},
     {bhvYellowCoin, MODEL_YELLOW_COIN, 0},
     {bhvSmallBully, MODEL_BULLY, 0},
