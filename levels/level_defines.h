@@ -55,3 +55,4 @@ STUB_LEVEL(  "",               LEVEL_UNKNOWN_35,       COURSE_NONE,             
 DEFINE_LEVEL("DONKEY % SLID2", LEVEL_TTM,              COURSE_TTM,      ttm,              mountain, 15000,    0x08, 0x08, 0x08, _,         _)
 STUB_LEVEL(  "",               LEVEL_UNKNOWN_37,       COURSE_NONE,                                 20000,    0x00, 0x00, 0x00, _,         _)
 STUB_LEVEL(  "",               LEVEL_UNKNOWN_38,       COURSE_NONE,                                 20000,    0x00, 0x00, 0x00, sDynUnk38, _)
+DEFINE_LEVEL("TEST LEVEL",     LEVEL_TEST_LEVEL,       COURSE_NONE,     test_level,        generic,  20000,    0x08, 0x08, 0x08, _,         _)

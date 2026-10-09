@@ -4573,6 +4573,15 @@ const BehaviorScript bhvWingCap[] = {
     END_LOOP(),
 };
 
+const BehaviorScript bhvSlideCap[] = {
+    BEGIN(OBJ_LIST_LEVEL),
+    OR_INT(oFlags, (OBJ_FLAG_COMPUTE_ANGLE_TO_MARIO | OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE)),
+    CALL_NATIVE(bhv_wing_cap_init),
+    BEGIN_LOOP(),
+        CALL_NATIVE(bhv_wing_vanish_cap_loop),
+    END_LOOP(),
+};
+
 const BehaviorScript bhvMetalCap[] = {
     BEGIN(OBJ_LIST_LEVEL),
     OR_INT(oFlags, (OBJ_FLAG_COMPUTE_ANGLE_TO_MARIO | OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE)),

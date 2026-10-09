@@ -808,7 +808,7 @@ $(BUILD_DIR)/text/%/define_text.inc.c: text/define_text.inc.c text/%/courses.h t
 	$(V)$(CPP) $(CPPFLAGS) $< -o - -I text/$*/ | $(TEXTCONV) charmap.txt - $@
 
 # Level headers
-$(BUILD_DIR)/include/level_headers.h: levels/level_headers.h.in
+$(BUILD_DIR)/include/level_headers.h: levels/level_headers.h.in levels/level_defines.h
 	$(call print,Preprocessing level headers:,$<,$@)
 	$(V)$(CPP) $(CPPFLAGS) -I . $< | sed -E 's|(.+)|#include "\1"|' > $@
 

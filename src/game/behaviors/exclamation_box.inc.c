@@ -28,6 +28,7 @@ struct Struct802C0DF0 sExclamationBoxContents[] = { { 0, 0, 0, MODEL_MARIOS_WING
                                                     { 12, 0, 3, MODEL_STAR, bhvSpawnedStar },
                                                     { 13, 0, 4, MODEL_STAR, bhvSpawnedStar },
                                                     { 14, 0, 5, MODEL_STAR, bhvSpawnedStar },
+                                                    { 15, 0, 0, MODEL_MARIOS_CAP, bhvSlideCap },
                                                     { 99, 0, 0, 0, NULL } };
 
 void bhv_rotating_exclamation_box_loop(void) {

@@ -92,7 +92,7 @@ enum MacroPresets {
     macro_jumping_box,
     macro_butterfly_triplet,
     macro_butterfly_triplet_2,
-    macro_empty_90,
+    macro_box_slide_cap,
     macro_empty_91,
     macro_empty_92,
     macro_bully,
