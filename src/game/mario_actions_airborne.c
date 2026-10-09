@@ -452,9 +452,18 @@ s32 act_jump(struct MarioState *m) {
         return set_mario_action(m, ACT_GROUND_POUND, 0);
     }
 
+    // Don't allow the same A press that started the original jump
+    // to immediately trigger the mid-air double jump.
+    if ((m->input & INPUT_A_PRESSED) && m->actionTimer > 0) {
+        return set_mario_action(m, ACT_MIDAIR_DOUBLE_JUMP, 0);
+    }
+
+    m->actionTimer++;
+
     play_mario_sound(m, SOUND_ACTION_TERRAIN_JUMP, 0);
     common_air_action_step(m, ACT_JUMP_LAND, MARIO_ANIM_SINGLE_JUMP,
                            AIR_STEP_CHECK_LEDGE_GRAB | AIR_STEP_CHECK_HANG);
+
     return FALSE;
 }
 
@@ -473,6 +482,25 @@ s32 act_double_jump(struct MarioState *m) {
 
     play_mario_sound(m, SOUND_ACTION_TERRAIN_JUMP, SOUND_MARIO_HOOHOO);
     common_air_action_step(m, ACT_DOUBLE_JUMP_LAND, animation,
+                           AIR_STEP_CHECK_LEDGE_GRAB | AIR_STEP_CHECK_HANG);
+    return FALSE;
+}
+
+s32 act_midair_double_jump(struct MarioState *m) {
+    s32 animation = (m->vel[1] >= 0.0f)
+        ? MARIO_ANIM_DOUBLE_JUMP_RISE
+        : MARIO_ANIM_DOUBLE_JUMP_FALL;
+
+    if (check_kick_or_dive_in_air(m)) {
+        return TRUE;
+    }
+
+    if (m->input & INPUT_Z_PRESSED) {
+        return set_mario_action(m, ACT_GROUND_POUND, 0);
+    }
+
+    play_mario_sound(m, SOUND_ACTION_TERRAIN_JUMP, SOUND_MARIO_HOOHOO);
+    common_air_action_step(m, ACT_JUMP_LAND, animation,
                            AIR_STEP_CHECK_LEDGE_GRAB | AIR_STEP_CHECK_HANG);
     return FALSE;
 }
@@ -2073,6 +2101,7 @@ s32 mario_execute_airborne_action(struct MarioState *m) {
     switch (m->action) {
         case ACT_JUMP:                 cancel = act_jump(m);                 break;
         case ACT_DOUBLE_JUMP:          cancel = act_double_jump(m);          break;
+        case ACT_MIDAIR_DOUBLE_JUMP:   cancel = act_midair_double_jump(m);   break;
         case ACT_FREEFALL:             cancel = act_freefall(m);             break;
         case ACT_HOLD_JUMP:            cancel = act_hold_jump(m);            break;
         case ACT_HOLD_FREEFALL:        cancel = act_hold_freefall(m);        break;
