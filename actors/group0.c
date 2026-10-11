@@ -25,3 +25,7 @@
 #include "white_particle_small/model.inc.c"
 
 #include "sparkle_animation/model.inc.c"
+#include "kart_body/collision.inc.c"
+#include "kart_body/model.inc.c"
+#include "kart_wheels/collision.inc.c"
+#include "kart_wheels/model.inc.c"

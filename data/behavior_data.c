@@ -4601,6 +4601,23 @@ const BehaviorScript bhvVanishCap[] = {
     END_LOOP(),
 };
 
+const BehaviorScript bhvKartHat[] = {
+    BEGIN(OBJ_LIST_LEVEL),
+    OR_INT(oFlags, (OBJ_FLAG_COMPUTE_ANGLE_TO_MARIO | OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE)),
+    CALL_NATIVE(bhv_vanish_cap_init),
+    BEGIN_LOOP(),
+        CALL_NATIVE(bhv_wing_vanish_cap_loop),
+    END_LOOP(),
+};
+
+const BehaviorScript bhvKartVisual[] = {
+    BEGIN(OBJ_LIST_GENACTOR),
+    OR_INT(oFlags, OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE),
+    BEGIN_LOOP(),
+        CALL_NATIVE(bhv_kart_visual_loop),
+    END_LOOP(),
+};
+
 const BehaviorScript bhvStar[] = {
     BEGIN(OBJ_LIST_LEVEL),
     OR_INT(oFlags, OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE),

@@ -2,6 +2,7 @@
 const MacroObject bob_seg7_macro_objs[] = {
     MACRO_OBJECT(/*preset*/ macro_chain_chomp,               /*yaw*/   0, /*pos*/   260,   735,  1920),
     MACRO_OBJECT(/*preset*/ macro_breakable_box_no_coins,    /*yaw*/   0, /*pos*/ -3979,     0,  6827),
+    MACRO_OBJECT(/*preset*/ macro_box_kart_hat,              /*yaw*/ 135, /*pos*/ -6200,     0,  6100),
     MACRO_OBJECT(/*preset*/ macro_goomba,                    /*yaw*/   0, /*pos*/ -2713,   152,  5778),
     MACRO_OBJECT(/*preset*/ macro_goomba,                    /*yaw*/   0, /*pos*/  -342,   400,  5433),
     MACRO_OBJECT_WITH_BEH_PARAM(/*preset*/ macro_water_bomb_spawner,        /*yaw*/   0, /*pos*/  3620,  4000,  4800, /*behParam*/ 15),

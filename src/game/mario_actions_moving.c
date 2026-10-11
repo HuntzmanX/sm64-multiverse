@@ -1244,6 +1244,63 @@ s32 act_riding_shell_ground(struct MarioState *m) {
     return FALSE;
 }
 
+s32 act_kart_driving(struct MarioState *m) {
+    f32 absSpeed;
+    f32 speedRatio;
+    f32 steeringInput;
+    f32 targetSpeed = 0.0f;
+    s16 startYaw = m->faceAngle[1];
+    s16 maxTurnRate = 0x180;
+
+    if (m->input & INPUT_A_DOWN) {
+        targetSpeed = 80.0f;
+    } else if (m->controller->buttonDown & B_BUTTON) {
+        targetSpeed = -24.0f;
+    }
+
+    m->forwardVel = approach_f32(m->forwardVel, targetSpeed,
+                                 targetSpeed == 0.0f ? 0.8f : 1.2f,
+                                 targetSpeed == 0.0f ? 0.8f : 1.2f);
+
+    absSpeed = m->forwardVel < 0.0f ? -m->forwardVel : m->forwardVel;
+    speedRatio = absSpeed / 80.0f;
+    if (speedRatio > 1.0f) {
+        speedRatio = 1.0f;
+    }
+    if ((m->input & INPUT_Z_DOWN) && absSpeed > 16.0f) {
+        maxTurnRate = 0x500;
+    }
+
+    if ((m->input & INPUT_NONZERO_ANALOG) && absSpeed > 1.0f) {
+        steeringInput = sins((s16)(m->intendedYaw - m->faceAngle[1])) * (m->intendedMag / 32.0f);
+        if (m->forwardVel < 0.0f) {
+            steeringInput = -steeringInput;
+        }
+        m->faceAngle[1] += (s16)(maxTurnRate * speedRatio * steeringInput);
+    }
+
+    mario_set_forward_vel(m, m->forwardVel);
+
+    switch (perform_ground_step(m)) {
+        case GROUND_STEP_LEFT_GROUND:
+            set_mario_action(m, ACT_FREEFALL, 0);
+            break;
+
+        case GROUND_STEP_HIT_WALL:
+            mario_set_forward_vel(m, -m->forwardVel * 0.25f);
+            play_sound(SOUND_ACTION_BONK, m->marioObj->header.gfx.cameraToObject);
+            m->particleFlags |= PARTICLE_VERTICAL_STAR;
+            break;
+    }
+
+    if ((m->input & INPUT_Z_DOWN) && (m->forwardVel > 16.0f || m->forwardVel < -16.0f)) {
+        m->particleFlags |= PARTICLE_DUST;
+    }
+
+    tilt_body_ground_shell(m, startYaw);
+    return FALSE;
+}
+
 s32 act_crawling(struct MarioState *m) {
     s32 val04;
 
@@ -2002,6 +2059,7 @@ s32 mario_execute_moving_action(struct MarioState *m) {
         case ACT_HOLD_STOMACH_SLIDE:       cancel = act_hold_stomach_slide(m);       break;
         case ACT_DIVE_SLIDE:               cancel = act_dive_slide(m);               break;
         case ACT_MOVE_PUNCHING:            cancel = act_move_punching(m);            break;
+        case ACT_KART_DRIVING:              cancel = act_kart_driving(m);             break;
         case ACT_CROUCH_SLIDE:             cancel = act_crouch_slide(m);             break;
         case ACT_SLIDE_KICK_SLIDE:         cancel = act_slide_kick_slide(m);         break;
         case ACT_HARD_BACKWARD_GROUND_KB:  cancel = act_hard_backward_ground_kb(m);  break;

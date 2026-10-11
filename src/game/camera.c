@@ -1771,6 +1771,12 @@ s32 update_behind_mario_camera(struct Camera *c, Vec3f focus, Vec3f pos) {
     f32 maxDist = 800.f;
     f32 focYOff = 125.f;
 
+    if (gMarioState->flags & MARIO_KART_HAT) {
+        maxDist = 1400.f;
+        focYOff = 180.f;
+        goalPitch = 0x1200;
+    }
+
     // Zoom in when Mario R_TRIG mode is active
     if (sSelectionFlags & CAM_MODE_MARIO_ACTIVE) {
         maxDist = 350.f;
@@ -1790,6 +1796,9 @@ s32 update_behind_mario_camera(struct Camera *c, Vec3f focus, Vec3f pos) {
     vec3f_get_dist_and_angle(focus, pos, &dist, &pitch, &yaw);
     if (dist > maxDist) {
         dist = maxDist;
+    } else if ((gMarioState->flags & MARIO_KART_HAT)
+               && !(sSelectionFlags & CAM_MODE_MARIO_ACTIVE)) {
+        camera_approach_f32_symmetric_bool(&dist, maxDist, 15.f);
     }
     if ((absPitch = pitch) < 0) {
         absPitch = -absPitch;
@@ -1910,6 +1919,7 @@ s32 mode_behind_mario(struct Camera *c) {
     f32 waterHeight;
     f32 floorHeight;
     f32 distCamToFocus;
+    f32 maxDist = (gMarioState->flags & MARIO_KART_HAT) ? 1400.f : 800.f;
     s16 camPitch;
     s16 camYaw;
     s16 yaw;
@@ -1940,8 +1950,8 @@ s32 mode_behind_mario(struct Camera *c) {
     resolve_geometry_collisions(c->pos, oldPos);
     // Prevent camera getting too far away
     vec3f_get_dist_and_angle(c->focus, c->pos, &distCamToFocus, &camPitch, &camYaw);
-    if (distCamToFocus > 800.f) {
-        distCamToFocus = 800.f;
+    if (distCamToFocus > maxDist) {
+        distCamToFocus = maxDist;
         vec3f_set_dist_and_angle(c->focus, c->pos, distCamToFocus, camPitch, camYaw);
     }
     pan_ahead_of_player(c);

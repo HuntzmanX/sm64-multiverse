@@ -12,6 +12,27 @@ static struct ObjectHitbox sCapHitbox = {
     /* hurtboxHeight:     */ 90,
 };
 
+void bhv_kart_visual_loop(void) {
+    struct Object *marioObj = o->parentObj;
+
+    if (marioObj != gMarioObject || marioObj->activeFlags == ACTIVE_FLAG_DEACTIVATED
+        || !(gMarioState->flags & MARIO_KART_HAT)) {
+        o->activeFlags = ACTIVE_FLAG_DEACTIVATED;
+        return;
+    }
+
+    o->oPosX = gMarioState->pos[0];
+    o->oPosY = gMarioState->pos[1];
+    o->oPosZ = gMarioState->pos[2];
+    o->oFaceAnglePitch = marioObj->header.gfx.angle[0];
+    o->oFaceAngleYaw = marioObj->header.gfx.angle[1];
+    o->oFaceAngleRoll = marioObj->header.gfx.angle[2];
+
+    if (o->oBehParams2ndByte != 0) {
+        o->oPosY += sins(o->oTimer * 0x2000) * 2.0f;
+    }
+}
+
 s32 cap_set_hitbox(void) {
     obj_set_hitbox(o, &sCapHitbox);
     if (o->oInteractStatus & INT_STATUS_INTERACTED) {

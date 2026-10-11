@@ -76,6 +76,7 @@ struct MacroPreset MacroObjectPresets[] = {
     {bhvExclamationBox, MODEL_EXCLAMATION_BOX, 0},
     {bhvExclamationBox, MODEL_EXCLAMATION_BOX, 1},
     {bhvExclamationBox, MODEL_EXCLAMATION_BOX, 2},
+    {bhvExclamationBox, MODEL_EXCLAMATION_BOX, 15},
     {bhvExclamationBox, MODEL_EXCLAMATION_BOX, 3},
     {bhvExclamationBox, MODEL_EXCLAMATION_BOX, 4}, // unused
     {bhvExclamationBox, MODEL_EXCLAMATION_BOX, 5},

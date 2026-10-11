@@ -462,6 +462,7 @@
 #define MODEL_TTM_SLIDE_EXIT_PODIUM       0x7B        // ttm_geo_000DF4
 #define MODEL_WOODEN_SIGNPOST             0x7C        // wooden_signpost_geo
 #define MODEL_UNKNOWN_7D                  0x7D        // referenced in macro presets. Unknown usage
+#define MODEL_KART_BODY                   0x7E        // kart_body_geo
 // find me
 #define MODEL_CANNON_BARREL               0x7F        // cannon_barrel_geo
 #define MODEL_CANNON_BASE                 0x80        // cannon_base_geo
@@ -477,6 +478,7 @@
 #define MODEL_DIRT_ANIMATION              0x8A        // dirt_animation_geo
 #define MODEL_CARTOON_STAR                0x8B        // cartoon_star_geo
 #define MODEL_BLUE_COIN_SWITCH            0x8C        // blue_coin_switch_geo
+#define MODEL_KART_WHEELS                 0x8D        // kart_wheels_geo
 // find me
 #define MODEL_MIST                        0x8E        // mist_geo
 #define MODEL_SPARKLES_ANIMATION          0x8F        // sparkles_animation_geo

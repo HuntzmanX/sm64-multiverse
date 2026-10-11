@@ -149,6 +149,8 @@
 
 /* Mario */
 #define /*0x0F4*/ oMarioParticleFlags    OBJECT_FIELD_S32(0x1B)
+#define /*0x0F8*/ oMarioKartBody         OBJECT_FIELD_OBJ(0x1C)
+#define /*0x0FC*/ oMarioKartWheels       OBJECT_FIELD_OBJ(0x1D)
 #define /*0x108*/ oMarioPoleUnk108       OBJECT_FIELD_S32(0x20)
 #define /*0x108*/ oMarioReadingSignDYaw  OBJECT_FIELD_S32(0x20)
 #define /*0x10C*/ oMarioPoleYawVel       OBJECT_FIELD_S32(0x21)

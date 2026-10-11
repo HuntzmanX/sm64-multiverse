@@ -35,6 +35,7 @@
 
 u32 unused80339F10;
 s8 filler80339F1C[20];
+static s8 sKartCameraActive;
 
 /**************************************************
  *                    ANIMATIONS                  *
@@ -1604,12 +1605,54 @@ u32 update_and_return_cap_flags(struct MarioState *m) {
     return flags;
 }
 
+static void update_kart_visuals(struct MarioState *m) {
+    struct Object *marioObj = m->marioObj;
+
+    if (m->flags & MARIO_KART_HAT) {
+        if (marioObj->oMarioKartBody == NULL
+            || marioObj->oMarioKartBody->activeFlags == ACTIVE_FLAG_DEACTIVATED) {
+            marioObj->oMarioKartBody = spawn_object(marioObj, MODEL_KART_BODY, bhvKartVisual);
+        }
+
+        if (marioObj->oMarioKartWheels == NULL
+            || marioObj->oMarioKartWheels->activeFlags == ACTIVE_FLAG_DEACTIVATED) {
+            marioObj->oMarioKartWheels = spawn_object(marioObj, MODEL_KART_WHEELS, bhvKartVisual);
+            marioObj->oMarioKartWheels->oBehParams2ndByte = 1;
+        }
+    } else {
+        if (marioObj->oMarioKartBody != NULL) {
+            marioObj->oMarioKartBody->activeFlags = ACTIVE_FLAG_DEACTIVATED;
+            marioObj->oMarioKartBody = NULL;
+        }
+        if (marioObj->oMarioKartWheels != NULL) {
+            marioObj->oMarioKartWheels->activeFlags = ACTIVE_FLAG_DEACTIVATED;
+            marioObj->oMarioKartWheels = NULL;
+        }
+    }
+}
+
 /**
  * Updates the Mario's cap, rendering, and hitbox.
  */
 void mario_update_hitbox_and_cap_model(struct MarioState *m) {
     struct MarioBodyState *bodyState = m->marioBodyState;
     s32 flags = update_and_return_cap_flags(m);
+
+    update_kart_visuals(m);
+    m->marioObj->header.gfx.sharedChild = gLoadedGraphNodes[MODEL_MARIO];
+
+    if (m->flags & MARIO_KART_HAT) {
+        set_mario_animation(m, MARIO_ANIM_START_SLEEP_SITTING);
+        set_anim_to_frame(m, 63);
+        m->marioObj->hitboxRadius = 220.0f;
+        m->marioObj->hitboxHeight = 300.0f;
+        m->marioObj->hurtboxRadius = 220.0f;
+        m->marioObj->hurtboxHeight = 300.0f;
+    } else {
+        m->marioObj->hitboxRadius = 50.0f;
+        m->marioObj->hurtboxRadius = 0.0f;
+        m->marioObj->hurtboxHeight = 0.0f;
+    }
 
     if (flags & MARIO_VANISH_CAP) {
         bodyState->modelState = MODEL_STATE_NOISE_ALPHA;
@@ -1647,7 +1690,9 @@ void mario_update_hitbox_and_cap_model(struct MarioState *m) {
     }
 
     // Short hitbox for crouching/crawling/etc.
-    if (m->action & ACT_FLAG_SHORT_HITBOX) {
+    if (m->flags & MARIO_KART_HAT) {
+        m->marioObj->hitboxHeight = 300.0f;
+    } else if (m->action & ACT_FLAG_SHORT_HITBOX) {
         m->marioObj->hitboxHeight = 100.0f;
     } else {
         m->marioObj->hitboxHeight = 160.0f;
@@ -1706,6 +1751,24 @@ s32 execute_mario_action(UNUSED struct Object *o) {
         update_mario_inputs(gMarioState);
         mario_handle_special_floors(gMarioState);
         mario_process_interactions(gMarioState);
+
+        if (gMarioState->flags & MARIO_KART_HAT) {
+            sKartCameraActive = TRUE;
+            if (gMarioState->area->camera->mode != CAMERA_MODE_BEHIND_MARIO) {
+                set_camera_mode(gMarioState->area->camera, CAMERA_MODE_BEHIND_MARIO, 1);
+            }
+            if (gMarioState->action != ACT_KART_DRIVING
+                && (gMarioState->action & ACT_GROUP_MASK) <= ACT_GROUP_MOVING
+                && gMarioState->health >= 0x100) {
+                set_mario_action(gMarioState, ACT_KART_DRIVING, 0);
+            }
+        } else if (sKartCameraActive) {
+            sKartCameraActive = FALSE;
+            set_camera_mode(gMarioState->area->camera, gMarioState->area->camera->defMode, 1);
+            if (gMarioState->action == ACT_KART_DRIVING) {
+                set_mario_action(gMarioState, ACT_IDLE, 0);
+            }
+        }
 
         // If Mario is OOB, stop executing actions.
         if (gMarioState->floor == NULL) {
