@@ -11,6 +11,8 @@ extern const GeoLayout castle_grounds_geo_00070C[];
 extern const GeoLayout castle_grounds_geo_000724[];
 extern const GeoLayout castle_grounds_geo_00073C[];
 
+extern const GeoLayout castle_grounds_racetrack_geo[];
+
 // leveldata
 extern const Gfx castle_grounds_seg7_dl_07006D70[];
 extern const Gfx castle_grounds_seg7_dl_070095F0[];
@@ -37,6 +39,9 @@ extern const Collision castle_grounds_seg7_collision_cannon_grill[];
 extern const struct MovtexQuadCollection castle_grounds_movtex_water[];
 extern Movtex castle_grounds_movtex_tris_waterfall[];
 extern const Gfx castle_grounds_dl_waterfall[];
+
+extern const Gfx castle_grounds_racetrack_dl[];
+extern const Collision castle_grounds_racetrack_collision[];
 
 // script
 extern const LevelScript level_castle_grounds_entry[];

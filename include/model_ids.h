@@ -484,6 +484,8 @@
 #define MODEL_SPARKLES_ANIMATION          0x8F        // sparkles_animation_geo
 #define MODEL_RED_FLAME                   0x90        // red_flame_geo
 #define MODEL_BLUE_FLAME                  0x91        // blue_flame_geo
+#define MODEL_KART_FRONT_WHEELS          0x92        // kart_front_wheels_geo
+#define MODEL_KART_REAR_WHEELS           0x93        // kart_rear_wheels_geo
 // find me
 // find me
 #define MODEL_BURN_SMOKE                  0x94        // burn_smoke_geo

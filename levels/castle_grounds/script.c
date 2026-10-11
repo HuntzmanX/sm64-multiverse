@@ -119,6 +119,9 @@ const LevelScript level_castle_grounds_entry[] = {
 
     AREA(/*index*/ 1, castle_grounds_geo_00073C),
         WARP_NODE(/*id*/ 0xF1, /*destLevel*/ LEVEL_CASTLE_GROUNDS, /*destArea*/ 0x01, /*destNode*/ 0x03, /*flags*/ WARP_NO_CHECKPOINT),
+        // Drive Mario test-track pipe.
+        WARP_NODE(/*id*/ 0x30, /*destLevel*/ LEVEL_CASTLE_GROUNDS, /*destArea*/ 0x02, /*destNode*/ 0x31, /*flags*/ WARP_NO_CHECKPOINT),
+        OBJECT(/*model*/ MODEL_CASTLE_GROUNDS_WARP_PIPE, /*pos*/ -700, 260, 5200, /*angle*/ 0, 0, 0, /*behParam*/ 0x00300000, /*beh*/ bhvWarpPipe),
         JUMP_LINK(script_func_local_1),
         JUMP_LINK(script_func_local_2),
         JUMP_LINK(script_func_local_3),
@@ -127,6 +130,15 @@ const LevelScript level_castle_grounds_entry[] = {
         MACRO_OBJECTS(/*objList*/ castle_grounds_seg7_macro_objs),
         SET_BACKGROUND_MUSIC(/*settingsPreset*/ 0x0000, /*seq*/ SEQ_SOUND_PLAYER),
         TERRAIN_TYPE(/*terrainType*/ TERRAIN_GRASS),
+    END_AREA(),
+
+    AREA(/*index*/ 2, castle_grounds_racetrack_geo),
+        WARP_NODE(/*id*/ 0x31, /*destLevel*/ LEVEL_CASTLE_GROUNDS, /*destArea*/ 0x01, /*destNode*/ 0x30, /*flags*/ WARP_NO_CHECKPOINT),
+        OBJECT(/*model*/ MODEL_CASTLE_GROUNDS_WARP_PIPE, /*pos*/ 0, 0, 0, /*angle*/ 0, 180, 0, /*behParam*/ 0x00310000, /*beh*/ bhvWarpPipe),
+        OBJECT(/*model*/ MODEL_MARIOS_CAP, /*pos*/ 550, 300, -450, /*angle*/ 0, 0, 0, /*behParam*/ 0x00000000, /*beh*/ bhvKartHat),
+        TERRAIN(/*terrainData*/ castle_grounds_racetrack_collision),
+        SET_BACKGROUND_MUSIC(/*settingsPreset*/ 0x0000, /*seq*/ SEQ_LEVEL_GRASS),
+        TERRAIN_TYPE(/*terrainType*/ TERRAIN_STONE),
     END_AREA(),
 
     FREE_LEVEL_POOL(),

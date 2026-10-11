@@ -1612,21 +1612,36 @@ static void update_kart_visuals(struct MarioState *m) {
         if (marioObj->oMarioKartBody == NULL
             || marioObj->oMarioKartBody->activeFlags == ACTIVE_FLAG_DEACTIVATED) {
             marioObj->oMarioKartBody = spawn_object(marioObj, MODEL_KART_BODY, bhvKartVisual);
+            marioObj->oMarioKartBody->oBehParams2ndByte = 0;
         }
 
-        if (marioObj->oMarioKartWheels == NULL
-            || marioObj->oMarioKartWheels->activeFlags == ACTIVE_FLAG_DEACTIVATED) {
-            marioObj->oMarioKartWheels = spawn_object(marioObj, MODEL_KART_WHEELS, bhvKartVisual);
-            marioObj->oMarioKartWheels->oBehParams2ndByte = 1;
+        if (marioObj->oMarioKartFrontWheels == NULL
+            || marioObj->oMarioKartFrontWheels->activeFlags == ACTIVE_FLAG_DEACTIVATED) {
+            marioObj->oMarioKartFrontWheels =
+                spawn_object(marioObj, MODEL_KART_FRONT_WHEELS, bhvKartVisual);
+            marioObj->oMarioKartFrontWheels->oBehParams2ndByte = 1;
+        }
+
+        if (marioObj->oMarioKartRearWheels == NULL
+            || marioObj->oMarioKartRearWheels->activeFlags == ACTIVE_FLAG_DEACTIVATED) {
+            marioObj->oMarioKartRearWheels =
+                spawn_object(marioObj, MODEL_KART_REAR_WHEELS, bhvKartVisual);
+            marioObj->oMarioKartRearWheels->oBehParams2ndByte = 2;
         }
     } else {
         if (marioObj->oMarioKartBody != NULL) {
             marioObj->oMarioKartBody->activeFlags = ACTIVE_FLAG_DEACTIVATED;
             marioObj->oMarioKartBody = NULL;
         }
-        if (marioObj->oMarioKartWheels != NULL) {
-            marioObj->oMarioKartWheels->activeFlags = ACTIVE_FLAG_DEACTIVATED;
-            marioObj->oMarioKartWheels = NULL;
+
+        if (marioObj->oMarioKartFrontWheels != NULL) {
+            marioObj->oMarioKartFrontWheels->activeFlags = ACTIVE_FLAG_DEACTIVATED;
+            marioObj->oMarioKartFrontWheels = NULL;
+        }
+
+        if (marioObj->oMarioKartRearWheels != NULL) {
+            marioObj->oMarioKartRearWheels->activeFlags = ACTIVE_FLAG_DEACTIVATED;
+            marioObj->oMarioKartRearWheels = NULL;
         }
     }
 }

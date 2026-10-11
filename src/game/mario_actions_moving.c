@@ -1245,13 +1245,6 @@ s32 act_riding_shell_ground(struct MarioState *m) {
 }
 
 s32 act_kart_driving(struct MarioState *m) {
-    enum {
-        KART_STATE_NORMAL,
-        KART_STATE_DRIFT_LEFT,
-        KART_STATE_DRIFT_RIGHT,
-        KART_STATE_BOOST,
-    };
-
     f32 absSpeed;
     f32 speedRatio;
     f32 steeringInput = 0.0f;
@@ -1501,6 +1494,16 @@ s32 act_kart_driving(struct MarioState *m) {
             play_sound(SOUND_ACTION_BONK, m->marioObj->header.gfx.cameraToObject);
             m->particleFlags |= PARTICLE_VERTICAL_STAR;
             break;
+    }
+
+    /*
+     * Mario Kart-style drift hop. This is deliberately graphical only:
+     * collision stays glued to SM64's ground step while Mario and the kart
+     * rise together for a few frames when a drift begins.
+     */
+    if ((m->actionState == KART_STATE_DRIFT_LEFT || m->actionState == KART_STATE_DRIFT_RIGHT)
+        && m->actionTimer < 10) {
+        m->marioObj->header.gfx.pos[1] += sins((s16)(m->actionTimer * 0x0CCD)) * 45.0f;
     }
 
     tilt_body_ground_shell(m, startYaw);

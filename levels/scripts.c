@@ -68,6 +68,8 @@ const LevelScript level_main_scripts_entry[] = {
     LOAD_MODEL_FROM_GEO(MODEL_MARIO,                   mario_geo),
     LOAD_MODEL_FROM_GEO(MODEL_KART_BODY,               kart_body_geo),
     LOAD_MODEL_FROM_GEO(MODEL_KART_WHEELS,             kart_wheels_geo),
+    LOAD_MODEL_FROM_GEO(MODEL_KART_FRONT_WHEELS,       kart_front_wheels_geo),
+    LOAD_MODEL_FROM_GEO(MODEL_KART_REAR_WHEELS,        kart_rear_wheels_geo),
     LOAD_MODEL_FROM_GEO(MODEL_SMOKE,                   smoke_geo),
     LOAD_MODEL_FROM_GEO(MODEL_SPARKLES,                sparkles_geo),
     LOAD_MODEL_FROM_GEO(MODEL_BUBBLE,                  bubble_geo),

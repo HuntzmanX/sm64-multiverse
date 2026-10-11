@@ -12,8 +12,88 @@ static struct ObjectHitbox sCapHitbox = {
     /* hurtboxHeight:     */ 90,
 };
 
+static f32 kart_visual_hop_offset(void) {
+    if (gMarioState->action == ACT_KART_DRIVING
+        && (gMarioState->actionState == KART_STATE_DRIFT_LEFT
+            || gMarioState->actionState == KART_STATE_DRIFT_RIGHT)
+        && gMarioState->actionTimer < 10) {
+        return sins((s16)(gMarioState->actionTimer * 0x0CCD)) * 45.0f;
+    }
+
+    return 0.0f;
+}
+
+static void kart_rotate_matrix_local_x(Mat4 mtx, s16 angle) {
+    s32 i;
+    f32 y;
+    f32 z;
+    f32 s = sins(angle);
+    f32 c = coss(angle);
+
+    for (i = 0; i < 3; i++) {
+        y = mtx[1][i];
+        z = mtx[2][i];
+        mtx[1][i] = y * c + z * s;
+        mtx[2][i] = z * c - y * s;
+    }
+}
+
+static void kart_rotate_matrix_local_z(Mat4 mtx, s16 angle) {
+    s32 i;
+    f32 x;
+    f32 y;
+    f32 s = sins(angle);
+    f32 c = coss(angle);
+
+    for (i = 0; i < 3; i++) {
+        x = mtx[0][i];
+        y = mtx[1][i];
+        mtx[0][i] = x * c + y * s;
+        mtx[1][i] = y * c - x * s;
+    }
+}
+
+static void kart_build_visual_matrix(struct Object *obj, s16 yaw, s16 wheelSpin, s16 bodyRoll) {
+    Vec3f position;
+    Vec3f upDir;
+
+    position[0] = obj->oPosX;
+    position[1] = obj->oPosY;
+    position[2] = obj->oPosZ;
+
+    if (gMarioState->action == ACT_KART_DRIVING && gMarioState->floor != NULL) {
+        upDir[0] = gMarioState->floor->normal.x;
+        upDir[1] = gMarioState->floor->normal.y;
+        upDir[2] = gMarioState->floor->normal.z;
+    } else {
+        upDir[0] = 0.0f;
+        upDir[1] = 1.0f;
+        upDir[2] = 0.0f;
+    }
+
+    mtxf_align_terrain_normal(obj->transform, upDir, position, yaw);
+
+    if (bodyRoll != 0) {
+        kart_rotate_matrix_local_z(obj->transform, bodyRoll);
+    }
+
+    if (wheelSpin != 0) {
+        kart_rotate_matrix_local_x(obj->transform, wheelSpin);
+    }
+
+    obj->header.gfx.throwMatrix = &obj->transform;
+}
+
 void bhv_kart_visual_loop(void) {
     struct Object *marioObj = o->parentObj;
+    s16 yaw;
+    s16 steerAngle = 0;
+    s16 leanAngle = 0;
+    s16 slipAngle;
+    f32 steeringInput = 0.0f;
+    f32 hop;
+    f32 forwardOffset = 0.0f;
+    f32 heightOffset = 0.0f;
 
     if (marioObj != gMarioObject || marioObj->activeFlags == ACTIVE_FLAG_DEACTIVATED
         || !(gMarioState->flags & MARIO_KART_HAT)) {
@@ -21,25 +101,63 @@ void bhv_kart_visual_loop(void) {
         return;
     }
 
-    o->oPosX = gMarioState->pos[0];
-    o->oPosY = gMarioState->pos[1];
-    o->oPosZ = gMarioState->pos[2];
-    o->oFaceAnglePitch = marioObj->header.gfx.angle[0];
-    o->oFaceAngleYaw = marioObj->header.gfx.angle[1];
-    o->oFaceAngleRoll = marioObj->header.gfx.angle[2];
-
-    if (o->oBehParams2ndByte != 0) {
-        o->oPosY += sins(o->oTimer * 0x2000) * 2.0f;
-    }
+    yaw = gMarioState->faceAngle[1];
+    hop = kart_visual_hop_offset();
 
     /*
-     * Reuse the same terrain-normal render alignment used by throwable
-     * objects. Keep this visual-only so kart driving physics remain owned
-     * by Mario's ground-step code. While airborne, retain Mario's normal
-     * graphical angles instead of aiming the kart at the floor below.
+     * Front/rear axle offsets come directly from the original MKDS wheel mesh
+     * centres, multiplied by its Fast64 GEO_SCALE of 9.
      */
-    if (gMarioState->action == ACT_KART_DRIVING && gMarioState->floor != NULL) {
-        cur_obj_align_gfx_with_floor();
+    if (o->oBehParams2ndByte == 1) {
+        forwardOffset = 342.0f;
+        heightOffset = 90.0f;
+    } else if (o->oBehParams2ndByte == 2) {
+        forwardOffset = -243.0f;
+        heightOffset = 135.0f;
+    }
+
+    o->oPosX = gMarioState->pos[0] + forwardOffset * sins(yaw);
+    o->oPosY = gMarioState->pos[1] + heightOffset + hop;
+    o->oPosZ = gMarioState->pos[2] + forwardOffset * coss(yaw);
+
+    if (o->oBehParams2ndByte == 0) {
+        /*
+         * Chassis roll follows slip angle, so normal driving stays nearly
+         * level while a drift visibly loads the outside suspension.
+         */
+        slipAngle = (s16)(gMarioState->faceAngle[1] - gMarioState->slideYaw);
+        leanAngle = (s16)(-slipAngle / 4);
+
+        if (leanAngle > 0x0700) {
+            leanAngle = 0x0700;
+        } else if (leanAngle < -0x0700) {
+            leanAngle = -0x0700;
+        }
+
+        kart_build_visual_matrix(o, yaw, 0, leanAngle);
+    } else {
+        /*
+         * The tyre mesh rotates around its local X axis. Keep an accumulator
+         * on the visual object itself so forward/reverse spin naturally in
+         * opposite directions.
+         */
+        o->oFaceAnglePitch -= (s16)(gMarioState->forwardVel * 64.0f);
+
+        if (o->oBehParams2ndByte == 1 && (gMarioState->input & INPUT_NONZERO_ANALOG)) {
+            steeringInput =
+                sins((s16)(gMarioState->intendedYaw - gMarioState->faceAngle[1]))
+                * (gMarioState->intendedMag / 32.0f);
+
+            if (steeringInput > 1.0f) {
+                steeringInput = 1.0f;
+            } else if (steeringInput < -1.0f) {
+                steeringInput = -1.0f;
+            }
+
+            steerAngle = (s16)(steeringInput * 0x0900);
+        }
+
+        kart_build_visual_matrix(o, yaw + steerAngle, o->oFaceAnglePitch, 0);
     }
 }
 
