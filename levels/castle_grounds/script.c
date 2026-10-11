@@ -133,6 +133,8 @@ const LevelScript level_castle_grounds_entry[] = {
     END_AREA(),
 
     AREA(/*index*/ 2, castle_grounds_racetrack_geo),
+        // Falling off the circuit returns to the test-track pipe in Castle Grounds.
+        WARP_NODE(/*id*/ 0xF1, /*destLevel*/ LEVEL_CASTLE_GROUNDS, /*destArea*/ 0x01, /*destNode*/ 0x30, /*flags*/ WARP_NO_CHECKPOINT),
         WARP_NODE(/*id*/ 0x31, /*destLevel*/ LEVEL_CASTLE_GROUNDS, /*destArea*/ 0x01, /*destNode*/ 0x30, /*flags*/ WARP_NO_CHECKPOINT),
         OBJECT(/*model*/ MODEL_CASTLE_GROUNDS_WARP_PIPE, /*pos*/ 0, 0, 0, /*angle*/ 0, 180, 0, /*behParam*/ 0x00310000, /*beh*/ bhvWarpPipe),
         OBJECT(/*model*/ MODEL_MARIOS_CAP, /*pos*/ 550, 300, -450, /*angle*/ 0, 0, 0, /*behParam*/ 0x00000000, /*beh*/ bhvKartHat),
