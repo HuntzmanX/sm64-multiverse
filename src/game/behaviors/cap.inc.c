@@ -31,6 +31,16 @@ void bhv_kart_visual_loop(void) {
     if (o->oBehParams2ndByte != 0) {
         o->oPosY += sins(o->oTimer * 0x2000) * 2.0f;
     }
+
+    /*
+     * Reuse the same terrain-normal render alignment used by throwable
+     * objects. Keep this visual-only so kart driving physics remain owned
+     * by Mario's ground-step code. While airborne, retain Mario's normal
+     * graphical angles instead of aiming the kart at the floor below.
+     */
+    if (gMarioState->action == ACT_KART_DRIVING && gMarioState->floor != NULL) {
+        cur_obj_align_gfx_with_floor();
+    }
 }
 
 s32 cap_set_hitbox(void) {
