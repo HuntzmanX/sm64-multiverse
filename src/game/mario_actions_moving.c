@@ -1245,56 +1245,262 @@ s32 act_riding_shell_ground(struct MarioState *m) {
 }
 
 s32 act_kart_driving(struct MarioState *m) {
+    enum {
+        KART_STATE_NORMAL,
+        KART_STATE_DRIFT_LEFT,
+        KART_STATE_DRIFT_RIGHT,
+        KART_STATE_BOOST,
+    };
+
     f32 absSpeed;
     f32 speedRatio;
-    f32 steeringInput;
+    f32 steeringInput = 0.0f;
     f32 targetSpeed = 0.0f;
+    f32 accelRate = 1.2f;
+    f32 decelRate = 0.9f;
     s16 startYaw = m->faceAngle[1];
-    s16 maxTurnRate = 0x180;
+    s16 normalTurnRate;
+    s16 desiredTravelYaw;
+    s16 travelDYaw;
+    s16 travelFollowRate;
+    s16 slipAngle;
+    s32 driftDirection = 0;
+    s32 isDrifting;
+    s32 boostTier = 0;
+    u16 driftCharge;
 
-    if (m->input & INPUT_A_DOWN) {
-        targetSpeed = 80.0f;
-    } else if (m->controller->buttonDown & B_BUTTON) {
-        targetSpeed = -24.0f;
+    if (m->actionState > KART_STATE_BOOST) {
+        m->actionState = KART_STATE_NORMAL;
+        m->actionTimer = 0;
+        m->actionArg = 0;
     }
-
-    m->forwardVel = approach_f32(m->forwardVel, targetSpeed,
-                                 targetSpeed == 0.0f ? 0.8f : 1.2f,
-                                 targetSpeed == 0.0f ? 0.8f : 1.2f);
 
     absSpeed = m->forwardVel < 0.0f ? -m->forwardVel : m->forwardVel;
     speedRatio = absSpeed / 80.0f;
     if (speedRatio > 1.0f) {
         speedRatio = 1.0f;
     }
-    if ((m->input & INPUT_Z_DOWN) && absSpeed > 16.0f) {
-        maxTurnRate = 0x500;
-    }
 
-    if ((m->input & INPUT_NONZERO_ANALOG) && absSpeed > 1.0f) {
-        steeringInput = sins((s16)(m->intendedYaw - m->faceAngle[1])) * (m->intendedMag / 32.0f);
-        if (m->forwardVel < 0.0f) {
+    if (m->input & INPUT_NONZERO_ANALOG) {
+        steeringInput =
+            sins((s16)(m->intendedYaw - m->faceAngle[1])) * (m->intendedMag / 32.0f);
+
+        if (steeringInput > 1.0f) {
+            steeringInput = 1.0f;
+        } else if (steeringInput < -1.0f) {
+            steeringInput = -1.0f;
+        }
+
+        if (m->forwardVel < -1.0f) {
             steeringInput = -steeringInput;
         }
-        m->faceAngle[1] += (s16)(maxTurnRate * speedRatio * steeringInput);
     }
 
-    mario_set_forward_vel(m, m->forwardVel);
+    /*
+     * Start a drift with a fresh Z press while moving and steering.
+     * The drift direction is locked at initiation, while the stick can
+     * subsequently tighten the drift or counter-steer it.
+     */
+    if (m->actionState == KART_STATE_NORMAL
+        && (m->input & INPUT_Z_PRESSED)
+        && absSpeed > 24.0f
+        && (steeringInput > 0.20f || steeringInput < -0.20f)) {
+
+        m->actionState =
+            steeringInput < 0.0f ? KART_STATE_DRIFT_LEFT : KART_STATE_DRIFT_RIGHT;
+        m->actionTimer = 0;
+        m->actionArg = 0;
+        m->slideYaw = m->faceAngle[1];
+    }
+
+    isDrifting = (m->actionState == KART_STATE_DRIFT_LEFT
+                   || m->actionState == KART_STATE_DRIFT_RIGHT);
+
+    if (isDrifting) {
+        driftDirection = (m->actionState == KART_STATE_DRIFT_LEFT) ? -1 : 1;
+
+        /*
+         * Releasing Z cashes in the drift charge. Short drifts simply end;
+         * longer drifts give one of two mini-turbo strengths.
+         */
+        if (!(m->input & INPUT_Z_DOWN) || absSpeed < 12.0f) {
+            driftCharge = m->actionTimer;
+
+            if (driftCharge >= 50) {
+                m->actionState = KART_STATE_BOOST;
+                m->actionTimer = 0;
+                m->actionArg = 40;
+
+                if (m->forwardVel < 100.0f) {
+                    m->forwardVel = 100.0f;
+                }
+
+                m->particleFlags |= PARTICLE_SPARKLES | PARTICLE_HORIZONTAL_STAR;
+            } else if (driftCharge >= 24) {
+                m->actionState = KART_STATE_BOOST;
+                m->actionTimer = 0;
+                m->actionArg = 22;
+
+                if (m->forwardVel < 90.0f) {
+                    m->forwardVel = 90.0f;
+                }
+
+                m->particleFlags |= PARTICLE_SPARKLES;
+            } else {
+                m->actionState = KART_STATE_NORMAL;
+                m->actionTimer = 0;
+                m->actionArg = 0;
+            }
+
+            isDrifting = FALSE;
+        }
+    }
+
+    /*
+     * A accelerates. B behaves like a brake while moving forward and only
+     * becomes reverse once the kart is nearly stopped.
+     */
+    if (m->actionState == KART_STATE_BOOST) {
+        boostTier = (m->actionArg >= 35) ? 2 : 1;
+        targetSpeed = boostTier == 2 ? 104.0f : 94.0f;
+        accelRate = boostTier == 2 ? 3.2f : 2.6f;
+        decelRate = accelRate;
+
+        m->particleFlags |= PARTICLE_DUST | PARTICLE_SPARKLES;
+
+        m->actionTimer++;
+        if (m->actionTimer >= m->actionArg) {
+            m->actionState = KART_STATE_NORMAL;
+            m->actionTimer = 0;
+            m->actionArg = 0;
+        }
+    } else if (m->input & INPUT_A_DOWN) {
+        targetSpeed = isDrifting ? 78.0f : 80.0f;
+        accelRate = isDrifting ? 1.0f : 1.35f;
+        decelRate = accelRate;
+    } else if (m->controller->buttonDown & B_BUTTON) {
+        if (m->forwardVel > 3.0f) {
+            targetSpeed = 0.0f;
+            accelRate = 2.8f;
+            decelRate = 2.8f;
+        } else {
+            targetSpeed = -26.0f;
+            accelRate = 1.1f;
+            decelRate = 1.1f;
+        }
+    } else {
+        targetSpeed = 0.0f;
+        accelRate = 0.75f;
+        decelRate = 0.75f;
+    }
+
+    m->forwardVel =
+        approach_f32(m->forwardVel, targetSpeed, accelRate, decelRate);
+
+    absSpeed = m->forwardVel < 0.0f ? -m->forwardVel : m->forwardVel;
+    speedRatio = absSpeed / 80.0f;
+    if (speedRatio > 1.0f) {
+        speedRatio = 1.0f;
+    }
+
+    if (isDrifting) {
+        /*
+         * Drift handling:
+         * - the kart body turns aggressively,
+         * - the actual velocity heading follows more slowly,
+         * - steering into the drift tightens it,
+         * - counter-steering opens the radius.
+         *
+         * This separates "where the kart points" from "where it is travelling",
+         * which is the bit the previous high-turn-rate version was missing.
+         */
+        driftDirection =
+            (m->actionState == KART_STATE_DRIFT_LEFT) ? -1 : 1;
+
+        m->faceAngle[1] +=
+            (s16)((0x160 + (s16)(0x180 * speedRatio)) * driftDirection);
+        m->faceAngle[1] +=
+            (s16)(0x240 * steeringInput * speedRatio);
+
+        slipAngle = (s16)(0x0E00 + (0x0600 * speedRatio));
+        desiredTravelYaw =
+            m->faceAngle[1] - (s16)(slipAngle * driftDirection);
+
+        travelDYaw = (s16)(desiredTravelYaw - m->slideYaw);
+        travelFollowRate = (s16)(0x120 + (0x080 * (1.0f - speedRatio)));
+
+        if (travelDYaw > travelFollowRate) {
+            travelDYaw = travelFollowRate;
+        } else if (travelDYaw < -travelFollowRate) {
+            travelDYaw = -travelFollowRate;
+        }
+
+        m->slideYaw += travelDYaw;
+
+        m->vel[0] = m->forwardVel * sins(m->slideYaw);
+        m->vel[1] = 0.0f;
+        m->vel[2] = m->forwardVel * coss(m->slideYaw);
+        m->slideVelX = m->vel[0];
+        m->slideVelZ = m->vel[2];
+
+        /*
+         * Build charge every drift frame, with a small reward for actively
+         * steering into the drift rather than just holding Z.
+         */
+        if (m->actionTimer < 0xFFF0) {
+            m->actionTimer++;
+
+            if ((driftDirection > 0 && steeringInput > 0.55f)
+                || (driftDirection < 0 && steeringInput < -0.55f)) {
+                m->actionTimer++;
+            }
+        }
+
+        m->particleFlags |= PARTICLE_DUST;
+
+        if (m->actionTimer >= 24) {
+            m->particleFlags |= PARTICLE_SPARKLES;
+        }
+
+        if (m->actionTimer >= 50 && (m->actionTimer & 3) == 0) {
+            m->particleFlags |= PARTICLE_HORIZONTAL_STAR;
+        }
+    } else {
+        /*
+         * Normal steering is deliberately quicker at low speed and calmer at
+         * high speed. Boost steering is reduced slightly so the turbo feels
+         * committed rather than twitchy.
+         */
+        normalTurnRate = (s16)(0x360 - (0x180 * speedRatio));
+
+        if (m->actionState == KART_STATE_BOOST) {
+            normalTurnRate = (s16)(normalTurnRate * 0.8f);
+        }
+
+        if ((m->input & INPUT_NONZERO_ANALOG) && absSpeed > 1.0f) {
+            m->faceAngle[1] += (s16)(normalTurnRate * steeringInput);
+        }
+
+        m->slideYaw = m->faceAngle[1];
+        mario_set_forward_vel(m, m->forwardVel);
+    }
 
     switch (perform_ground_step(m)) {
         case GROUND_STEP_LEFT_GROUND:
+            m->actionState = KART_STATE_NORMAL;
+            m->actionTimer = 0;
+            m->actionArg = 0;
             set_mario_action(m, ACT_FREEFALL, 0);
             break;
 
         case GROUND_STEP_HIT_WALL:
-            mario_set_forward_vel(m, -m->forwardVel * 0.25f);
+            m->actionState = KART_STATE_NORMAL;
+            m->actionTimer = 0;
+            m->actionArg = 0;
+            mario_set_forward_vel(m, -m->forwardVel * 0.20f);
             play_sound(SOUND_ACTION_BONK, m->marioObj->header.gfx.cameraToObject);
             m->particleFlags |= PARTICLE_VERTICAL_STAR;
             break;
-    }
-
-    if ((m->input & INPUT_Z_DOWN) && (m->forwardVel > 16.0f || m->forwardVel < -16.0f)) {
-        m->particleFlags |= PARTICLE_DUST;
     }
 
     tilt_body_ground_shell(m, startYaw);
