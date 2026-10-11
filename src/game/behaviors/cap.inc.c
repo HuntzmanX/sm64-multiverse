@@ -116,9 +116,42 @@ void bhv_kart_visual_loop(void) {
         heightOffset = 135.0f;
     }
 
-    o->oPosX = gMarioState->pos[0] + forwardOffset * sins(yaw);
-    o->oPosY = gMarioState->pos[1] + heightOffset + hop;
-    o->oPosZ = gMarioState->pos[2] + forwardOffset * coss(yaw);
+    /*
+     * Position the axle centres in the same terrain-aligned basis as the
+     * chassis. Without this, the axle meshes tilt correctly but their centres
+     * stay on a flat horizontal plane and can separate from the body on banks.
+     */
+    {
+        Mat4 chassisMatrix;
+        Vec3f chassisPos;
+        Vec3f upDir;
+
+        chassisPos[0] = gMarioState->pos[0];
+        chassisPos[1] = gMarioState->pos[1] + hop;
+        chassisPos[2] = gMarioState->pos[2];
+
+        if (gMarioState->action == ACT_KART_DRIVING && gMarioState->floor != NULL) {
+            upDir[0] = gMarioState->floor->normal.x;
+            upDir[1] = gMarioState->floor->normal.y;
+            upDir[2] = gMarioState->floor->normal.z;
+        } else {
+            upDir[0] = 0.0f;
+            upDir[1] = 1.0f;
+            upDir[2] = 0.0f;
+        }
+
+        mtxf_align_terrain_normal(chassisMatrix, upDir, chassisPos, yaw);
+
+        o->oPosX = chassisMatrix[3][0]
+                 + chassisMatrix[1][0] * heightOffset
+                 + chassisMatrix[2][0] * forwardOffset;
+        o->oPosY = chassisMatrix[3][1]
+                 + chassisMatrix[1][1] * heightOffset
+                 + chassisMatrix[2][1] * forwardOffset;
+        o->oPosZ = chassisMatrix[3][2]
+                 + chassisMatrix[1][2] * heightOffset
+                 + chassisMatrix[2][2] * forwardOffset;
+    }
 
     if (o->oBehParams2ndByte == 0) {
         /*
