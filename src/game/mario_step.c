@@ -17,11 +17,11 @@ struct Surface gWaterSurfacePseudoFloor = {
 };
 
 static f32 get_mario_collision_radius(struct MarioState *m, f32 normalRadius) {
-    return (m->flags & MARIO_KART_HAT) ? 150.0f : normalRadius;
+    return (m->action == ACT_KART_DRIVING) ? 150.0f : normalRadius;
 }
 
 static f32 get_mario_collision_height(struct MarioState *m) {
-    return (m->flags & MARIO_KART_HAT) ? 300.0f : 160.0f;
+    return (m->action == ACT_KART_DRIVING) ? 300.0f : 160.0f;
 }
 
 /**
@@ -272,7 +272,7 @@ static s32 perform_ground_quarter_step(struct MarioState *m, Vec3f nextPos) {
     f32 floorHeight;
     f32 waterLevel;
     f32 collisionHeight = get_mario_collision_height(m);
-    f32 upperWallOffset = (m->flags & MARIO_KART_HAT) ? 150.0f : 60.0f;
+    f32 upperWallOffset = (m->action == ACT_KART_DRIVING) ? 150.0f : 60.0f;
 
     lowerWall = resolve_and_return_wall_collisions(nextPos, 30.0f,
                                                    get_mario_collision_radius(m, 24.0f));
@@ -363,7 +363,7 @@ u32 check_ledge_grab(struct MarioState *m, struct Surface *wall, Vec3f intendedP
     f32 displacementX;
     f32 displacementZ;
 
-    if (m->vel[1] > 0 || (m->flags & MARIO_KART_HAT)) {
+    if (m->vel[1] > 0 || m->action == ACT_KART_DRIVING) {
         return FALSE;
     }
 
