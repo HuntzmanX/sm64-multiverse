@@ -1608,7 +1608,7 @@ u32 update_and_return_cap_flags(struct MarioState *m) {
 static void update_kart_visuals(struct MarioState *m) {
     struct Object *marioObj = m->marioObj;
 
-    if (m->flags & MARIO_KART_HAT) {
+    if ((m->flags & MARIO_KART_HAT) && m->action == ACT_KART_DRIVING) {
         if (marioObj->oMarioKartBody == NULL
             || marioObj->oMarioKartBody->activeFlags == ACTIVE_FLAG_DEACTIVATED) {
             marioObj->oMarioKartBody = spawn_object(marioObj, MODEL_KART_BODY, bhvKartVisual);
@@ -1656,7 +1656,7 @@ void mario_update_hitbox_and_cap_model(struct MarioState *m) {
     update_kart_visuals(m);
     m->marioObj->header.gfx.sharedChild = gLoadedGraphNodes[MODEL_MARIO];
 
-    if (m->flags & MARIO_KART_HAT) {
+    if (m->action == ACT_KART_DRIVING) {
         set_mario_animation(m, MARIO_ANIM_START_SLEEP_SITTING);
         set_anim_to_frame(m, 63);
         m->marioObj->hitboxRadius = 220.0f;
@@ -1705,7 +1705,7 @@ void mario_update_hitbox_and_cap_model(struct MarioState *m) {
     }
 
     // Short hitbox for crouching/crawling/etc.
-    if (m->flags & MARIO_KART_HAT) {
+    if (m->action == ACT_KART_DRIVING) {
         m->marioObj->hitboxHeight = 300.0f;
     } else if (m->action & ACT_FLAG_SHORT_HITBOX) {
         m->marioObj->hitboxHeight = 100.0f;
