@@ -105,15 +105,17 @@ void bhv_kart_visual_loop(void) {
     hop = kart_visual_hop_offset();
 
     /*
-     * Front/rear axle offsets come directly from the original MKDS wheel mesh
-     * centres, multiplied by its Fast64 GEO_SCALE of 9.
+     * The imported wheel actor uses GEO_SCALE(147456), which is 16.16 fixed
+     * point: 147456 / 65536 = 2.25x. The original axle centres are z=38/y=10
+     * at the front and z=-27/y=15 at the rear, so keep the split meshes at
+     * those exact world-space positions.
      */
     if (o->oBehParams2ndByte == 1) {
-        forwardOffset = 342.0f;
-        heightOffset = 90.0f;
+        forwardOffset = 85.5f;
+        heightOffset = 22.5f;
     } else if (o->oBehParams2ndByte == 2) {
-        forwardOffset = -243.0f;
-        heightOffset = 135.0f;
+        forwardOffset = -60.75f;
+        heightOffset = 33.75f;
     }
 
     /*
