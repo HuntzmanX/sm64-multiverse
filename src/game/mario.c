@@ -1768,14 +1768,27 @@ s32 execute_mario_action(UNUSED struct Object *o) {
         mario_process_interactions(gMarioState);
 
         if (gMarioState->flags & MARIO_KART_HAT) {
-            sKartCameraActive = TRUE;
-            if (gMarioState->area->camera->mode != CAMERA_MODE_BEHIND_MARIO) {
-                set_camera_mode(gMarioState->area->camera, CAMERA_MODE_BEHIND_MARIO, 1);
-            }
             if (gMarioState->action != ACT_KART_DRIVING
                 && (gMarioState->action & ACT_GROUP_MASK) <= ACT_GROUP_MOVING
                 && gMarioState->health >= 0x100) {
+                /*
+                 * A Kart Hat collected in the air becomes active on the first
+                 * grounded action. Make sure that transition starts exactly on
+                 * the known floor rather than carrying a slightly stale Y value
+                 * into the enlarged kart collision.
+                 */
+                if (gMarioState->floor != NULL) {
+                    gMarioState->pos[1] = gMarioState->floorHeight;
+                    gMarioState->vel[1] = 0.0f;
+                }
                 set_mario_action(gMarioState, ACT_KART_DRIVING, 0);
+            }
+
+            if (gMarioState->action == ACT_KART_DRIVING) {
+                sKartCameraActive = TRUE;
+                if (gMarioState->area->camera->mode != CAMERA_MODE_BEHIND_MARIO) {
+                    set_camera_mode(gMarioState->area->camera, CAMERA_MODE_BEHIND_MARIO, 1);
+                }
             }
         } else if (sKartCameraActive) {
             sKartCameraActive = FALSE;
