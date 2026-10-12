@@ -1619,7 +1619,28 @@ u32 interact_cap(struct MarioState *m, UNUSED u32 interactType, struct Object *o
             m->capTimer = capTime;
         }
 
-        if ((m->action & ACT_FLAG_IDLE) || m->action == ACT_WALKING) {
+        /*
+         * The Kart Hat is a transformation rather than a normal worn cap.
+         * Do not run ACT_PUTTING_ON_CAP: that cutscene uses stationary floor
+         * snapping, while the Kart Hat used to enable its much larger collision
+         * volume immediately. In a few pickup positions that combination could
+         * downwarp Mario into the floor and leave the game stuck.
+         *
+         * Grounded pickups enter the kart immediately. Airborne/water pickups
+         * simply arm the transformation and the normal Mario update will enter
+         * ACT_KART_DRIVING once Mario reaches a grounded action.
+         */
+        if (capFlag == MARIO_KART_HAT) {
+            m->flags |= MARIO_CAP_ON_HEAD;
+
+            if (m->floor != NULL
+                && ((m->action & ACT_GROUP_MASK) == ACT_GROUP_STATIONARY
+                    || (m->action & ACT_GROUP_MASK) == ACT_GROUP_MOVING)) {
+                m->pos[1] = m->floorHeight;
+                m->vel[1] = 0.0f;
+                set_mario_action(m, ACT_KART_DRIVING, 0);
+            }
+        } else if ((m->action & ACT_FLAG_IDLE) || m->action == ACT_WALKING) {
             m->flags |= MARIO_CAP_IN_HAND;
             set_mario_action(m, ACT_PUTTING_ON_CAP, 0);
         } else {
