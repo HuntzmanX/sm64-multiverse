@@ -110,7 +110,7 @@ const Collision castle_grounds_racetrack_collision[] = {
     COL_VERTEX(20000, -2200, -20000),
     COL_VERTEX(20000, -2200, 20000),
     COL_VERTEX(-20000, -2200, 20000),
-    COL_TRI_INIT(SURFACE_GRASS, 128),
+    COL_TRI_INIT(SURFACE_DEFAULT, 128),
     COL_TRI(0, 10, 1),
     COL_TRI(0, 9, 10),
     COL_TRI(1, 11, 2),
