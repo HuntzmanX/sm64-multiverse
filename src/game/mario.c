@@ -1754,6 +1754,43 @@ void func_sh_8025574C(void) {
 }
 #endif
 
+static s32 try_enter_cannon_cap(struct MarioState *m) {
+    struct Object *cannon;
+
+    if (!(m->flags & MARIO_CANNON_CAP)
+        || !(m->flags & MARIO_CAP_ON_HEAD)
+        || !(m->input & INPUT_Z_PRESSED)
+        || m->action == ACT_IN_CANNON
+        || m->floor == NULL
+        || ((m->action & ACT_GROUP_MASK) != ACT_GROUP_STATIONARY
+            && (m->action & ACT_GROUP_MASK) != ACT_GROUP_MOVING)) {
+        return FALSE;
+    }
+
+    /*
+     * Spawn a normal cannon base at Mario's feet and hand it to the existing
+     * cannon action. Leaving it in action 0 lets the standard cannon behavior
+     * perform its normal opening sequence before aiming becomes available.
+     */
+    cannon = spawn_object(m->marioObj, MODEL_CANNON_BASE, bhvCannon);
+    if (cannon == NULL) {
+        return FALSE;
+    }
+
+    cannon->oHomeX = m->pos[0];
+    cannon->oHomeY = m->pos[1] - 350.0f;
+    cannon->oHomeZ = m->pos[2];
+    cannon->oPosX = cannon->oHomeX;
+    cannon->oPosY = cannon->oHomeY;
+    cannon->oPosZ = cannon->oHomeZ;
+    cannon->oMoveAngleYaw = m->faceAngle[1];
+    cannon->oBehParams2ndByte = (u8)(m->faceAngle[1] >> 8);
+
+    m->usedObj = cannon;
+    set_mario_action(m, ACT_IN_CANNON, 0);
+    return TRUE;
+}
+
 /**
  * Main function for executing Mario's behavior.
  */
