@@ -66,6 +66,7 @@ enum MacroPresets {
     macro_box_metal_cap,
     macro_box_vanish_cap,
     macro_box_kart_hat,
+    macro_box_cannon_cap,
     macro_box_koopa_shell,
     macro_box_one_coin,
     macro_box_three_coins,
