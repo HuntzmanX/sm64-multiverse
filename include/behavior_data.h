@@ -407,6 +407,7 @@ extern const BehaviorScript bhvBigBoulder[];
 extern const BehaviorScript bhvBigBoulderGenerator[];
 extern const BehaviorScript bhvWingCap[];
 extern const BehaviorScript bhvMetalCap[];
+extern const BehaviorScript bhvCannonCap[];
 extern const BehaviorScript bhvNormalCap[];
 extern const BehaviorScript bhvVanishCap[];
 extern const BehaviorScript bhvKartHat[];
