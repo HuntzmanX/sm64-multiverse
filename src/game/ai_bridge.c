@@ -16,12 +16,14 @@
 #include "dialog_ids.h"
 #include "engine/math_util.h"
 #include "game_init.h"
+#include "gfx_dimensions.h"
 #include "ingame_menu.h"
 #include "level_update.h"
 #include "memory.h"
 #include "object_constants.h"
 #include "object_fields.h"
 #include "object_list_processor.h"
+#include "print.h"
 #include "segment2.h"
 
 #define AI_BRIDGE_COMMAND_FILE ".sm64-ai-command"
@@ -646,9 +648,30 @@ void ai_bridge_update(void) {
 }
 
 void ai_bridge_render_status(void) {
-    // Status remains available through .sm64-ai-status. The colorful HUD text
-    // renderer is deliberately avoided here: on the PC renderer, changing the
-    // label while a command begins can produce an invalid texture display list.
+    const char *text;
+
+    switch (sStatus) {
+        case AI_BRIDGE_THINKING:
+            text = "AI THINKING";
+            break;
+        case AI_BRIDGE_EXECUTING:
+            text = "AI ACTING";
+            break;
+        case AI_BRIDGE_COMPLETE:
+            text = "AI DONE";
+            break;
+        case AI_BRIDGE_ERROR:
+            text = "AI ERROR";
+            break;
+        case AI_BRIDGE_CANCELLED:
+            text = "AI CANCELLED";
+            break;
+        default:
+            text = "AI READY";
+            break;
+    }
+
+    print_text(GFX_DIMENSIONS_RECT_FROM_LEFT_EDGE(20), 70, text);
 }
 
 void ai_bridge_render_dialogue(void) {

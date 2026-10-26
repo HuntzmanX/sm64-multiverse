@@ -89,6 +89,10 @@ duration. A `say` step is displayed in-game with SM64's native dialog
 font and a translucent text panel. Speech must be the first step of a plan and
 temporarily gives Mario neutral input while it is displayed.
 
+A compact HUD-font label reports `AI READY`, `AI THINKING`, `AI ACTING`,
+`AI DONE`, `AI ERROR`, or `AI CANCELLED`. It uses fixed uppercase strings to
+keep the PC texture path as simple as the original working ready indicator.
+
 Telemetry includes up to 20 nearby recognised objects within 8000 world units,
 sorted nearest first. Coins, stars, doors, Bob-omb Buddies, common enemies,
 breakable and cap boxes, trees, cannons, signs, poles, switches, caps, shells,
