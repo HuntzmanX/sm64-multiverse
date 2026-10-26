@@ -9,12 +9,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "area.h"
 #include "dialog_ids.h"
 #include "ai_bridge.h"
 #include "ai_freecam.h"
 #include "game_init.h"
 #include "gfx_dimensions.h"
 #include "ingame_menu.h"
+#include "level_update.h"
 #include "memory.h"
 #include "segment2.h"
 
@@ -49,7 +51,9 @@ static s32 sTextLength;
 static s32 sSentTimer;
 static s32 sMouseX;
 static s32 sMouseY;
-static s32 sMouseLook;
+static s32 sUiConfirmDown;
+static s32 sUiBackDown;
+static s32 sMousePrimaryDown;
 static s8 sPhysicalStickX;
 static s8 sPhysicalStickY;
 static u16 sPhysicalButtons;
@@ -58,6 +62,10 @@ static u8 sDisplayText[AI_INPUT_ENCODED_LENGTH];
 static const char *ai_input_request_path(void) {
     const char *path = getenv("SM64_AI_REQUEST_FILE");
     return path != NULL && path[0] != '\0' ? path : AI_INPUT_REQUEST_FILE;
+}
+
+static s32 ai_input_ui_active(void) {
+    return gCurrentArea == NULL || sCurrPlayMode != 0 || get_dialog_id() != DIALOG_NONE;
 }
 
 static char ai_input_scancode_char(s32 key, s32 shifted) {
@@ -168,7 +176,6 @@ s32 ai_input_on_key_down(s32 key) {
         sTextLength = 0;
         sText[0] = '\0';
         sReplaceConfirmation = FALSE;
-        sMouseLook = FALSE;
         sMouseX = 0;
         sMouseY = 0;
         return TRUE;
@@ -209,6 +216,14 @@ s32 ai_input_on_key_down(s32 key) {
         }
         return TRUE;
     }
+    if (key == KEY_ENTER) {
+        sUiConfirmDown = TRUE;
+        return TRUE;
+    }
+    if (key == KEY_ESCAPE) {
+        sUiBackDown = TRUE;
+        return TRUE;
+    }
 
     return ai_freecam_is_enabled()
         && (key == KEY_Q || key == 0x11 || key == KEY_E
@@ -218,10 +233,13 @@ s32 ai_input_on_key_down(s32 key) {
 
 s32 ai_input_on_key_up(s32 key) {
     if (key >= 0 && key < (s32) (sizeof(sKeys) / sizeof(sKeys[0]))) sKeys[key] = FALSE;
+    if (key == KEY_ENTER) sUiConfirmDown = FALSE;
+    if (key == KEY_ESCAPE) sUiBackDown = FALSE;
     if (key == KEY_LEFTSHIFT || key == KEY_RIGHTSHIFT) {
         sShiftDown = sKeys[KEY_LEFTSHIFT] || sKeys[KEY_RIGHTSHIFT];
     }
-    return sTyping || key == KEY_TAB || key == KEY_T || key == KEY_F || key == KEY_F1
+    return sTyping || key == KEY_ESCAPE || key == KEY_ENTER
+        || key == KEY_TAB || key == KEY_T || key == KEY_F || key == KEY_F1
         || (ai_freecam_is_enabled()
             && (key == KEY_Q || key == 0x11 || key == KEY_E
                 || key == 0x1E || key == 0x1F || key == 0x20
@@ -231,12 +249,16 @@ s32 ai_input_on_key_up(s32 key) {
 void ai_input_on_all_keys_up(void) {
     memset(sKeys, 0, sizeof(sKeys));
     sShiftDown = FALSE;
-    sMouseLook = FALSE;
+    sUiConfirmDown = FALSE;
+    sUiBackDown = FALSE;
+    sMousePrimaryDown = FALSE;
     sMouseX = 0;
     sMouseY = 0;
 }
 
 void ai_input_capture_physical_pad(OSContPad *pad) {
+    s32 uiActive;
+
     if (pad == NULL) return;
     sPhysicalStickX = pad->stick_x;
     sPhysicalStickY = pad->stick_y;
@@ -245,10 +267,28 @@ void ai_input_capture_physical_pad(OSContPad *pad) {
         pad->stick_x = 0;
         pad->stick_y = 0;
         pad->button &= START_BUTTON;
-    } else if (ai_freecam_is_enabled()) {
-        pad->stick_x = 0;
-        pad->stick_y = 0;
-        pad->button &= ~(U_CBUTTONS | D_CBUTTONS | L_CBUTTONS | R_CBUTTONS);
+    } else {
+        uiActive = ai_input_ui_active();
+        // Physical action buttons never reach Mario. AI input is applied after
+        // this capture step, so planned A/B/Z actions remain unaffected.
+        pad->button &= ~(A_BUTTON | B_BUTTON | Z_TRIG);
+
+        if (ai_freecam_is_enabled()) {
+            pad->stick_x = 0;
+            pad->stick_y = 0;
+            pad->button &= ~(U_CBUTTONS | D_CBUTTONS | L_CBUTTONS | R_CBUTTONS);
+        }
+
+        if (uiActive) {
+            pad->stick_x = (sKeys[KEY_RIGHT] - sKeys[KEY_LEFT]) * 80;
+            pad->stick_y = (sKeys[KEY_UP] - sKeys[KEY_DOWN]) * 80;
+            if (sUiConfirmDown || sMousePrimaryDown) pad->button |= A_BUTTON;
+            if (sUiBackDown) {
+                pad->button |= sCurrPlayMode != 0 ? START_BUTTON : B_BUTTON;
+            }
+        } else if (sUiBackDown) {
+            pad->button |= START_BUTTON;
+        }
     }
 }
 
@@ -293,18 +333,14 @@ s32 ai_input_take_focus_toggle(void) {
 }
 
 void ai_input_add_mouse_delta(s32 x, s32 y) {
-    if (!sTyping && sMouseLook) {
+    if (!sTyping && ai_freecam_is_enabled() && !ai_input_ui_active()) {
         sMouseX += x;
         sMouseY += y;
     }
 }
 
 void ai_input_set_mouse_look(s32 active) {
-    sMouseLook = active && !sTyping;
-    if (!sMouseLook) {
-        sMouseX = 0;
-        sMouseY = 0;
-    }
+    sMousePrimaryDown = active;
 }
 
 s32 ai_input_take_mouse_x(void) {

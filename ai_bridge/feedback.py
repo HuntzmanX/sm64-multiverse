@@ -82,6 +82,18 @@ def summarize_result(before: dict, after: dict) -> str:
     if isinstance(target_result, str) and target_result not in {"", "none"}:
         parts.append(f"target {target_result.replace('_', ' ')}")
 
+    before_dialog = before.get("dialog")
+    after_dialog = after.get("dialog")
+    if isinstance(before_dialog, dict) and isinstance(after_dialog, dict):
+        was_active = before_dialog.get("active") is True
+        is_active = after_dialog.get("active") is True
+        if not was_active and is_active:
+            parts.append(f"dialog opened (id {after_dialog.get('id', '?')})")
+        elif was_active and not is_active:
+            parts.append("dialog closed")
+        elif was_active and is_active:
+            parts.append(f"dialog remains open (id {after_dialog.get('id', '?')})")
+
     if not parts:
         return "execution completed; telemetry was unavailable"
     return ", ".join(parts)

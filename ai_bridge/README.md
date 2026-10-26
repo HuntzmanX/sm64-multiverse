@@ -52,8 +52,8 @@ The player is now Mario's camera operator while queued AI inputs control Mario:
 - **W/S** flies in the direction the camera is looking, including up or down;
   **A/D** strafes horizontally.
 - **Q** descends and **E** ascends.
-- Hold **left click** and move the **mouse** to rotate and tilt the camera; the
-  **arrow keys** provide the same control without a mouse.
+- Move the **mouse** to rotate and tilt the camera without holding a button;
+  the **arrow keys** provide the same control without a mouse.
 - **F1** toggles the spectator camera so vanilla camera testing is still
   available.
 - **F** cycles through four spectator modes: **Free** moves and looks anywhere;
@@ -65,6 +65,9 @@ The player is now Mario's camera operator while queued AI inputs control Mario:
   as a close shortcut once you are typing. Type an instruction and press
   **Enter** to send it to the running bridge. **Escape** or **Tab** closes the
   box without sending. The panel and text wrapping adapt to widescreen windows.
+- Physical A, B, and Z inputs are removed from Mario's gameplay path; only the
+  AI can issue them. **Enter**, **Escape**, the **arrow keys**, and left click
+  provide human menu and dialog controls without directly controlling Mario.
 - If Enter is pressed while an instruction is still thinking, acting, or within
   its brief done window, the game asks before replacing it. Press **Enter** again
   to cancel the old instruction and send the new one, **Escape** to keep editing,
@@ -98,6 +101,9 @@ temporarily gives Mario neutral input while it is displayed. Mario may now add
 one short in-character reaction to notable, dangerous, funny, confusing, or
 personally directed requests. Routine movement stays quiet, and spontaneous
 speech is limited to the first control cycle so retries do not repeat the line.
+During custom speech Mario turns toward the player camera, except in first-person
+mode. The planner can also advance native sign and NPC text one page at a time,
+then deliver a short in-character closing remark after the dialog has closed.
 
 A compact custom icon reports ready, thinking, acting, error, or cancelled at
 the top-left of the HUD. The completed state temporarily reuses the ready icon.
@@ -113,8 +119,8 @@ stable ID, 3D and horizontal distance, height difference, threat flag, world
 position, and camera-relative `stick_toward` hint. Mario's floor height, height
 above ground, floor type/slope, wall contact, and water level are also reported.
 
-For goals that depend on changing object positions, the companion can run up to
-six short observe-act cycles. It refreshes telemetry between cycles and lets the
+For goals that depend on changing object positions or multi-page dialog, the
+companion can run up to eight short observe-act cycles. It refreshes telemetry between cycles and lets the
 model decide whether the instruction is complete or needs another movement
 burst. The fixed cycle cap prevents an unclear command from running forever.
 

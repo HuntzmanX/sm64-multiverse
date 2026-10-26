@@ -3,6 +3,7 @@
 #include "sm64.h"
 #include "ai_bridge.h"
 #include "ai_controller.h"
+#include "ai_freecam.h"
 
 #ifndef TARGET_N64
 
@@ -145,6 +146,8 @@ static const char *ai_bridge_object_type(struct Object *object, s32 *threat) {
         || ai_bridge_has_behavior(object, bhvStarDoor)) return "door";
     if (ai_bridge_has_behavior(object, bhvBobombBuddy)
         || ai_bridge_has_behavior(object, bhvBobombBuddyOpensCannon)) return "bobomb_buddy";
+    if (ai_bridge_has_behavior(object, bhvToadMessage)) return "toad";
+    if (ai_bridge_has_behavior(object, bhvRacingPenguin)) return "racing_penguin";
     if (ai_bridge_has_behavior(object, bhvBreakableBox)) return "breakable_box";
     if (ai_bridge_has_behavior(object, bhvBreakableBoxSmall)) return "small_breakable_box";
     if (ai_bridge_has_behavior(object, bhvExclamationBox)) {
@@ -597,6 +600,7 @@ static void ai_bridge_write_telemetry(void) {
             "  \"grounded\": %s,\n"
             "  \"swimming\": %s,\n"
             "  \"cutscene\": %s,\n"
+            "  \"dialog\": {\"active\": %s, \"id\": %d},\n"
             "  \"health\": %d,\n"
             "  \"environment\": {\"floor_height\": %.1f, \"height_above_floor\": %.1f, "
             "\"floor_type\": %d, \"floor_normal_y\": %.3f, \"touching_wall\": %s, "
@@ -608,7 +612,9 @@ static void ai_bridge_write_telemetry(void) {
             gMarioState->vel[0], gMarioState->vel[1], gMarioState->vel[2],
             gMarioState->forwardVel, gMarioState->faceAngle[1], cameraYaw, gMarioState->action,
             grounded ? "true" : "false", swimming ? "true" : "false",
-            cutscene ? "true" : "false", gMarioState->health,
+            cutscene ? "true" : "false",
+            get_dialog_id() != DIALOG_NONE ? "true" : "false", get_dialog_id(),
+            gMarioState->health,
             gMarioState->floorHeight, gMarioState->pos[1] - gMarioState->floorHeight,
             floorType, floorNormalY, gMarioState->wall != NULL ? "true" : "false",
             gMarioState->waterLevel,
@@ -647,6 +653,12 @@ void ai_bridge_update(void) {
     s32 cancelled = ai_controller_take_cancelled();
 
     if (sDialogueTimer > 0) {
+        if (gMarioState != NULL && gMarioState->marioObj != NULL
+            && ai_freecam_get_mode() != AI_CAMERA_MODE_FIRST_PERSON) {
+            s16 cameraYaw = calculate_yaw(gMarioState->pos, gLakituState.pos);
+            camera_approach_s16_symmetric_bool(&gMarioState->faceAngle[1], cameraYaw, 0x1000);
+            gMarioState->intendedYaw = gMarioState->faceAngle[1];
+        }
         sDialogueTimer--;
     }
 

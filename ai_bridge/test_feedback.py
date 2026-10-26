@@ -49,6 +49,18 @@ class FeedbackTests(unittest.TestCase):
         )
         self.assertIn("target stuck", result)
 
+    def test_result_summary_reports_dialog_transitions(self) -> None:
+        opened = summarize_result(
+            {"dialog": {"active": False, "id": -1}},
+            {"dialog": {"active": True, "id": 3}},
+        )
+        closed = summarize_result(
+            {"dialog": {"active": True, "id": 3}},
+            {"dialog": {"active": False, "id": -1}},
+        )
+        self.assertIn("dialog opened (id 3)", opened)
+        self.assertIn("dialog closed", closed)
+
     def test_wait_for_fresh_state_accepts_an_existing_newer_file(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             path = Path(temporary_directory) / "state"

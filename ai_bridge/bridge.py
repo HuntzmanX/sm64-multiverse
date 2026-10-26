@@ -104,8 +104,9 @@ Use type=input for ordinary controls and type=wait for neutral pauses. A button 
 step that releases it. A say step lets Mario react aloud before acting. Use one when the player explicitly
 asks Mario to speak. On control cycle 1, also add a brief spontaneous reaction when a request is dangerous,
 surprising, confusing, funny, ambitious, celebratory, or personally directed at Mario. Do not react to routine
-movement or correction. Unsolicited speech is allowed only on control cycle 1; never repeat an introduction
-or reaction during follow-up observation cycles. Say steps use neutral controls, must be the first step, and
+movement or correction. Unsolicited speech is allowed only on control cycle 1, except for one closing remark
+immediately after the cycle history reports that an NPC or sign dialog closed. Never repeat an introduction
+or reaction during ordinary follow-up observation cycles. Say steps use neutral controls, must be the first step, and
 should normally last 45-75 frames. Use at most one say step per plan. Speech must be concise, preferably 2-12
 words and never more than 80 printable ASCII characters; do not use emoji or accented Unicode characters.
 
@@ -128,6 +129,16 @@ objects that are absent from the current state snapshot.
 Every wait step must use stick_x=0, stick_y=0, and an empty buttons list. Never exceed 900 total
 frames. Common controls: A jumps, B punches or dives, Z crouches, and the C buttons adjust camera.
 
+The state includes dialog.active and dialog.id for native sign and NPC text boxes. When the player's goal is
+to read a sign or talk to an NPC, approach the listed object, press and release B to begin the interaction,
+and set continue_after_execution=true so the dialog can be observed. Prefer saving Mario's spontaneous
+character line for the end of this interaction rather than speaking before it. While dialog.active is true,
+do not move Mario: advance one page with a short A press followed by a neutral release, and set
+continue_after_execution=true to observe whether another page remains. When the latest cycle result says
+"dialog closed", finish with one short say-only plan containing Mario's reply, response, or remark and set
+continue_after_execution=false. The dialog text itself is not visible in telemetry, so keep the remark
+plausible for the requested interaction and nearby character without inventing specific facts or quotations.
+
 The state may include environment data plus nearby_objects sorted nearest first. Each object has a
 stable id, type, 3D and horizontal distance, height_delta, threat, position, and legacy
 stick_toward hint. Use height_delta and the environment fields to decide when jumping or a direct
@@ -146,7 +157,7 @@ released button press: B for a breakable box, A to jump onto a tree/pole, or the
 control once within range. Explain the current evidence in observation.
 """
 
-MAX_CONTROL_CYCLES = 6
+MAX_CONTROL_CYCLES = 8
 
 
 def parse_args() -> argparse.Namespace:
