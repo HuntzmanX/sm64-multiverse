@@ -13,7 +13,6 @@
 #include "area.h"
 #include "camera.h"
 #include "level_update.h"
-#include "print.h"
 
 #define AI_BRIDGE_COMMAND_FILE ".sm64-ai-command"
 #define AI_BRIDGE_STATE_FILE ".sm64-ai-state.json"
@@ -278,10 +277,9 @@ void ai_bridge_update(void) {
 }
 
 void ai_bridge_render_status(void) {
-    char text[32];
-
-    snprintf(text, sizeof(text), "AI %s", ai_bridge_status_text());
-    print_text(20, 20, text);
+    // Status remains available through .sm64-ai-status. The colorful HUD text
+    // renderer is deliberately avoided here: on the PC renderer, changing the
+    // label while a command begins can produce an invalid texture display list.
 }
 
 #else
