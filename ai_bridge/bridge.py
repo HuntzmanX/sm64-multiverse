@@ -3,7 +3,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import queue
 import sys
+import threading
+import time
 from pathlib import Path
 from typing import Literal
 
@@ -20,6 +23,7 @@ from feedback import (
 from protocol import build_plan_packet, build_status_packet, write_packet
 from runtime import (
     COMMAND_FILE_NAME,
+    REQUEST_FILE_NAME,
     STATE_FILE_NAME,
     STATUS_FILE_NAME,
     discover_runtime_directory,
@@ -68,6 +72,8 @@ SYSTEM_PROMPT = """You translate natural-language instructions into brief Super 
 The game runs at 30 frames per second. Stick X and Y range from -80 to 80. Positive Y means
 forward relative to the camera, negative Y means backward, negative X means left, and positive X
 means right. Available buttons are A, B, Z, R, C_UP, C_DOWN, C_LEFT, and C_RIGHT.
+The game locks each queued stick sequence to the camera orientation at which it begins, so the
+human camera operator can rotate the free-camera without curving Mario's intended world path.
 
 Use type=input for controls and type=wait for neutral pauses. A button press must be followed by a
 step that releases it. Use type=say only when the player explicitly asks Mario to say something;
@@ -76,8 +82,8 @@ first step. Use at most one say step per plan. Set text to an empty string for i
 Give every step a short intent describing what it does.
 
 Keep plans short and literal. Do not silently improve ambiguous instructions: choose a defensible
-interpretation and describe it in the interpretation field. The state snapshot does not contain
-nearby objects or geometry yet, so do not pretend to know their positions or claim to react to them.
+interpretation and describe it in the interpretation field. Do not pretend to know geometry or
+objects that are absent from the current state snapshot.
 Every wait step must use stick_x=0, stick_y=0, and an empty buttons list. Never exceed 900 total
 frames. Common controls: A jumps, B punches or dives, Z crouches, and the C buttons adjust camera.
 
@@ -107,6 +113,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--status-file", type=Path, default=runtime_directory / STATUS_FILE_NAME
+    )
+    parser.add_argument(
+        "--request-file", type=Path, default=runtime_directory / REQUEST_FILE_NAME
     )
     return parser.parse_args()
 
@@ -183,6 +192,36 @@ def print_status(status_path: Path, state_path: Path) -> None:
         print("No recognised objects within telemetry range.")
 
 
+def read_game_request(path: Path) -> str | None:
+    try:
+        command = path.read_text(encoding="utf-8").strip()
+        path.unlink(missing_ok=True)
+        return command or None
+    except OSError:
+        return None
+
+
+def read_terminal_commands(commands: queue.Queue[str | None]) -> None:
+    while True:
+        try:
+            commands.put(input("\nMario> ").strip())
+        except (EOFError, KeyboardInterrupt):
+            commands.put(None)
+            return
+
+
+def next_command(commands: queue.Queue[str | None], request_file: Path) -> str | None:
+    while True:
+        request = read_game_request(request_file)
+        if request:
+            print(f"\nMario> {request}  [from game]")
+            return request
+        try:
+            return commands.get(timeout=0.05)
+        except queue.Empty:
+            time.sleep(0.01)
+
+
 def main() -> int:
     args = parse_args()
     if not os.environ.get("OPENAI_API_KEY"):
@@ -192,13 +231,19 @@ def main() -> int:
     client = OpenAI()
     print(f"SM64 AI bridge ready — model: {args.model}")
     print(f"Game runtime: {args.command_file.parent}")
-    print("Enter a command, or /help for bridge commands.")
+    print("Enter a command here, or press Tab in-game. Use /help for bridge commands.")
+    terminal_commands: queue.Queue[str | None] = queue.Queue()
+    threading.Thread(
+        target=read_terminal_commands, args=(terminal_commands,), daemon=True
+    ).start()
 
     while True:
         try:
-            command = input("\nMario> ").strip()
-        except (EOFError, KeyboardInterrupt):
+            command = next_command(terminal_commands, args.request_file)
+        except KeyboardInterrupt:
             print()
+            break
+        if command is None:
             break
 
         if not command:

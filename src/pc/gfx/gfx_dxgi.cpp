@@ -25,6 +25,7 @@
 #include "gfx_direct3d_common.h"
 #include "gfx_screen_config.h"
 #include "gfx_pc.h"
+#include "game/ai_input.h"
 
 #define DECLARE_GFX_DXGI_FUNCTIONS
 #include "gfx_dxgi.h"
@@ -244,6 +245,17 @@ static LRESULT CALLBACK gfx_dxgi_wnd_proc(HWND h_wnd, UINT message, WPARAM w_par
         case WM_KEYUP:
             onkeyup(w_param, l_param);
             break;
+        case WM_INPUT: {
+            RAWINPUT raw;
+            UINT size = sizeof(raw);
+            if (GetRawInputData((HRAWINPUT) l_param, RID_INPUT, &raw, &size,
+                                sizeof(RAWINPUTHEADER)) == size
+                && raw.header.dwType == RIM_TYPEMOUSE
+                && !(raw.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE)) {
+                ai_input_add_mouse_delta(raw.data.mouse.lLastX, raw.data.mouse.lLastY);
+            }
+            break;
+        }
         case WM_SYSKEYDOWN:
             if ((w_param == VK_RETURN) && ((l_param & 1 << 30) == 0)) {
                 toggle_borderless_window_full_screen(!dxgi.is_full_screen, true);
@@ -300,6 +312,13 @@ static void gfx_dxgi_init(const char *game_name, bool start_in_fullscreen) {
         dxgi.h_wnd = CreateWindowW(WINCLASS_NAME, w_title, WS_OVERLAPPEDWINDOW,
             CW_USEDEFAULT, 0, wr.right - wr.left, wr.bottom - wr.top, nullptr, nullptr, nullptr, nullptr);
     });
+
+    RAWINPUTDEVICE mouse_device;
+    mouse_device.usUsagePage = 0x01;
+    mouse_device.usUsage = 0x02;
+    mouse_device.dwFlags = 0;
+    mouse_device.hwndTarget = dxgi.h_wnd;
+    RegisterRawInputDevices(&mouse_device, 1, sizeof(mouse_device));
 
     load_dxgi_library();
 

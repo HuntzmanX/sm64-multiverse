@@ -5,6 +5,7 @@
 #include "prevent_bss_reordering.h"
 #include "sm64.h"
 #include "camera.h"
+#include "ai_freecam.h"
 #include "seq_ids.h"
 #include "dialog_ids.h"
 #include "audio/external.h"
@@ -3204,6 +3205,10 @@ void update_camera(struct Camera *c) {
     }
 
     update_lakitu(c);
+
+    // In AI-control mode the player operates an independent spectator camera.
+    // Apply it after the vanilla camera update so follow modes cannot move it.
+    ai_freecam_update(c);
 
     gLakituState.lastFrameAction = sMarioCamState->action;
 }

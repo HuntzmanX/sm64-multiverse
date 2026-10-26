@@ -8,10 +8,11 @@
 #endif
 
 #include "../configfile.h"
+#include "game/ai_input.h"
 
 static int keyboard_buttons_down;
 
-static int keyboard_mapping[13][2];
+static int keyboard_mapping[14][2];
 
 static int keyboard_map_scancode(int scancode) {
     int ret = 0;
@@ -24,12 +25,19 @@ static int keyboard_map_scancode(int scancode) {
 }
 
 bool keyboard_on_key_down(int scancode) {
+    if (ai_input_on_key_down(scancode)) {
+        keyboard_buttons_down = 0;
+        return true;
+    }
     int mapped = keyboard_map_scancode(scancode);
     keyboard_buttons_down |= mapped;
     return mapped != 0;
 }
 
 bool keyboard_on_key_up(int scancode) {
+    if (ai_input_on_key_up(scancode)) {
+        return true;
+    }
     int mapped = keyboard_map_scancode(scancode);
     keyboard_buttons_down &= ~mapped;
     return mapped != 0;
@@ -37,6 +45,7 @@ bool keyboard_on_key_up(int scancode) {
 
 void keyboard_on_all_keys_up(void) {
     keyboard_buttons_down = 0;
+    ai_input_on_all_keys_up();
 }
 
 static void set_keyboard_mapping(int index, int mask, int scancode) {
@@ -60,6 +69,7 @@ static void keyboard_init(void) {
     set_keyboard_mapping(i++, R_CBUTTONS,   configKeyCRight);
     set_keyboard_mapping(i++, R_TRIG,       configKeyR);
     set_keyboard_mapping(i++, START_BUTTON, configKeyStart);
+    set_keyboard_mapping(i++, START_BUTTON, 0x01); // Escape; text entry consumes it first.
 
 #ifdef TARGET_WEB
     controller_emscripten_keyboard_init();

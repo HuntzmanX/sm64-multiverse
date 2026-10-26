@@ -45,6 +45,26 @@ With the built game still running from the repository root, run:
 .\.venv-win\Scripts\python.exe .\ai_bridge\bridge.py
 ```
 
+## AI-control keyboard and camera
+
+The player is now Mario's camera operator while queued AI inputs control Mario:
+
+- **WASD** moves the spectator camera across the level.
+- **Mouse** rotates and tilts the camera; the **arrow keys** provide the same
+  control without a mouse.
+- **F1** toggles the spectator camera so vanilla camera testing is still
+  available.
+- **Tab** opens the in-game command box. Type an instruction and press
+  **Enter** to send it to the running bridge. **Escape** or **Tab** closes the
+  box without sending.
+- While the command box is open, gameplay shortcuts are suppressed. Outside
+  it, **Escape** also acts as Start/pause.
+
+AI stick sequences retain the world-space direction they had when movement
+began. Rotating the spectator camera while Mario is running therefore changes
+the view without steering him off course. Start remains the emergency cancel
+for an executing sequence.
+
 Try instructions such as:
 
 - `Run forward for two seconds.`
@@ -80,8 +100,9 @@ Interactive bridge commands:
 - `/help` lists companion commands.
 - `/quit` exits the companion.
 
-The files `.sm64-ai-command`, `.sm64-ai-state.json`, and `.sm64-ai-status` are
-runtime-only local communication files and must not be committed.
+The files `.sm64-ai-command`, `.sm64-ai-state.json`, `.sm64-ai-status`, and
+`.sm64-ai-request` are runtime-only local communication files and must not be
+committed.
 
 Press **Start** in the game to cancel an executing sequence and immediately
 return to physical control.

@@ -2,6 +2,8 @@
 
 #include "sm64.h"
 #include "ai_controller.h"
+#include "camera.h"
+#include "engine/math_util.h"
 
 struct AiControllerStep {
     s8 stickX;
@@ -18,6 +20,8 @@ static u32 sQueueCount;
 static u16 sFramesRemaining;
 static u16 sPreviousPhysicalButtons;
 static s32 sCancelled;
+static s32 sHasReferenceYaw;
+static s16 sReferenceCameraYaw;
 
 #define AI_CONTROLLER_DEBUG_COMBO (Z_TRIG | R_TRIG | B_BUTTON)
 
@@ -44,6 +48,7 @@ void ai_controller_clear(void) {
     sQueueTail = 0;
     sQueueCount = 0;
     sFramesRemaining = 0;
+    sHasReferenceYaw = FALSE;
 }
 
 s32 ai_controller_is_active(void) {
@@ -70,6 +75,35 @@ static s32 ai_controller_begin_next_step(void) {
     sQueueCount--;
     sFramesRemaining = sCurrentStep.frames;
     return TRUE;
+}
+
+static void ai_controller_apply_world_locked_stick(OSContPad *pad) {
+    f32 cosine;
+    f32 sine;
+    s16 delta;
+    s32 stickX;
+    s32 stickY;
+
+    if (gCamera == NULL || (sCurrentStep.stickX == 0 && sCurrentStep.stickY == 0)) return;
+    if (!sHasReferenceYaw) {
+        sReferenceCameraYaw = gCamera->yaw;
+        sHasReferenceYaw = TRUE;
+    }
+
+    // Controller sticks are camera-relative. Rotate the queued vector by the
+    // camera delta so its world-space direction stays fixed while the human
+    // moves the spectator camera.
+    delta = sReferenceCameraYaw - gCamera->yaw;
+    cosine = coss(delta);
+    sine = sins(delta);
+    stickX = sCurrentStep.stickX * cosine + sCurrentStep.stickY * sine;
+    stickY = sCurrentStep.stickY * cosine - sCurrentStep.stickX * sine;
+    if (stickX > 80) stickX = 80;
+    if (stickX < -80) stickX = -80;
+    if (stickY > 80) stickY = 80;
+    if (stickY < -80) stickY = -80;
+    pad->stick_x = stickX;
+    pad->stick_y = stickY;
 }
 
 static void ai_controller_queue_debug_sequence(void) {
@@ -116,6 +150,10 @@ void ai_controller_update(OSContPad *pad) {
     pad->stick_x = sCurrentStep.stickX;
     pad->stick_y = sCurrentStep.stickY;
     pad->button = sCurrentStep.buttons;
+    ai_controller_apply_world_locked_stick(pad);
 
     sFramesRemaining--;
+    if (sFramesRemaining == 0 && sQueueCount == 0) {
+        sHasReferenceYaw = FALSE;
+    }
 }

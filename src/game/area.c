@@ -6,6 +6,7 @@
 #include "gfx_dimensions.h"
 #include "behavior_data.h"
 #include "ai_bridge.h"
+#include "ai_input.h"
 #include "game_init.h"
 #include "object_list_processor.h"
 #include "engine/surface_load.h"
@@ -385,6 +386,7 @@ void render_game(void) {
                       SCREEN_HEIGHT - BORDER_HEIGHT);
         gMenuOptSelectIndex = render_menus_and_dialogs();
         ai_bridge_render_dialogue();
+        ai_input_render();
         if (gMenuOptSelectIndex != MENU_OPT_NONE) {
             gSaveOptSelectIndex = gMenuOptSelectIndex;
         }

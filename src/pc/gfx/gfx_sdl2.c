@@ -21,6 +21,7 @@
 
 #include "gfx_window_manager_api.h"
 #include "gfx_screen_config.h"
+#include "game/ai_input.h"
 
 #define GFX_API_NAME "SDL2 - OpenGL"
 
@@ -254,6 +255,9 @@ static void gfx_sdl_handle_events(void) {
                 break;
             case SDL_KEYUP:
                 gfx_sdl_onkeyup(event.key.keysym.scancode);
+                break;
+            case SDL_MOUSEMOTION:
+                ai_input_add_mouse_delta(event.motion.xrel, event.motion.yrel);
                 break;
 #endif
             case SDL_WINDOWEVENT:

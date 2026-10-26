@@ -7,6 +7,7 @@ from pathlib import Path
 STATE_FILE_NAME = ".sm64-ai-state.json"
 COMMAND_FILE_NAME = ".sm64-ai-command"
 STATUS_FILE_NAME = ".sm64-ai-status"
+REQUEST_FILE_NAME = ".sm64-ai-request"
 
 
 def _newest_parent(paths: list[Path]) -> Path | None:

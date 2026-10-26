@@ -4,6 +4,7 @@
 #include "gfx_dimensions.h"
 #include "audio/external.h"
 #include "ai_bridge.h"
+#include "ai_input.h"
 #include "ai_controller.h"
 #include "buffers/buffers.h"
 #include "buffers/gfx_output_buffer.h"
@@ -561,6 +562,12 @@ void read_controller_inputs(void) {
 #endif
     }
     run_demo_inputs();
+
+    // Reserve the real stick and C-buttons for the human camera operator
+    // before an AI step is applied to Mario's controller path.
+    if (gControllers[0].controllerData != NULL) {
+        ai_input_capture_physical_pad(gControllers[0].controllerData);
+    }
 
     // Poll the local companion before applying the current queued controller
     // step. The bridge never performs network work inside the game process.
