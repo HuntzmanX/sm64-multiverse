@@ -32,7 +32,7 @@
 #define AI_BRIDGE_MAX_TOTAL_FRAMES 900
 #define AI_BRIDGE_TELEMETRY_INTERVAL 15
 #define AI_BRIDGE_COMPLETE_FRAMES 60
-#define AI_BRIDGE_MAX_NEARBY_OBJECTS 12
+#define AI_BRIDGE_MAX_NEARBY_OBJECTS 20
 #define AI_BRIDGE_OBJECT_RADIUS 8000.0f
 #define AI_BRIDGE_DIALOG_ASCII_LENGTH 80
 #define AI_BRIDGE_DIALOG_ENCODED_LENGTH 96
@@ -72,6 +72,32 @@ static s32 ai_bridge_has_behavior(struct Object *object, const BehaviorScript *b
     return object->behavior == segmented_to_virtual(behavior);
 }
 
+static const char *ai_bridge_exclamation_box_type(s32 contents) {
+    switch (contents) {
+        case 0: return "wing_cap_box";
+        case 1: return "metal_cap_box";
+        case 2: return "vanish_cap_box";
+        case 3: return "koopa_shell_box";
+        case 4: return "coin_box";
+        case 5: return "three_coin_box";
+        case 6: return "ten_coin_box";
+        case 7: return "one_up_box";
+        case 8: return "star_box";
+        case 9: return "running_one_up_box";
+        case 10: case 11: case 12: case 13: case 14: return "star_box";
+        default: return "exclamation_box";
+    }
+}
+
+static const char *ai_bridge_cap_switch_type(s32 capType) {
+    switch (capType) {
+        case 0: return "wing_cap_switch";
+        case 1: return "metal_cap_switch";
+        case 2: return "vanish_cap_switch";
+        default: return "cap_switch";
+    }
+}
+
 static const char *ai_bridge_object_type(struct Object *object, s32 *threat) {
     *threat = FALSE;
 
@@ -91,6 +117,37 @@ static const char *ai_bridge_object_type(struct Object *object, s32 *threat) {
         || ai_bridge_has_behavior(object, bhvStarDoor)) return "door";
     if (ai_bridge_has_behavior(object, bhvBobombBuddy)
         || ai_bridge_has_behavior(object, bhvBobombBuddyOpensCannon)) return "bobomb_buddy";
+    if (ai_bridge_has_behavior(object, bhvBreakableBox)) return "breakable_box";
+    if (ai_bridge_has_behavior(object, bhvBreakableBoxSmall)) return "small_breakable_box";
+    if (ai_bridge_has_behavior(object, bhvExclamationBox)) {
+        return ai_bridge_exclamation_box_type(object->oBehParams2ndByte);
+    }
+    if (ai_bridge_has_behavior(object, bhvTree)) return "tree";
+    if (ai_bridge_has_behavior(object, bhvPushableMetalBox)) return "pushable_metal_box";
+    if (ai_bridge_has_behavior(object, bhvCannon)) return "cannon";
+    if (ai_bridge_has_behavior(object, bhvCannonClosed)) return "closed_cannon";
+    if (ai_bridge_has_behavior(object, bhvMessagePanel)
+        || ai_bridge_has_behavior(object, bhvSignOnWall)) return "sign";
+    if (ai_bridge_has_behavior(object, bhvPoleGrabbing)
+        || ai_bridge_has_behavior(object, bhvGiantPole)) return "pole";
+    if (ai_bridge_has_behavior(object, bhvCapSwitch)) {
+        return ai_bridge_cap_switch_type(object->oBehParams2ndByte);
+    }
+    if (ai_bridge_has_behavior(object, bhvBlueCoinSwitch)) return "blue_coin_switch";
+    if (ai_bridge_has_behavior(object, bhvFloorSwitchHardcodedModel)
+        || ai_bridge_has_behavior(object, bhvFloorSwitchAnimatesObject)
+        || ai_bridge_has_behavior(object, bhvFloorSwitchGrills)
+        || ai_bridge_has_behavior(object, bhvFloorSwitchHiddenObjects)) return "purple_switch";
+    if (ai_bridge_has_behavior(object, bhvRecoveryHeart)) return "recovery_heart";
+    if (ai_bridge_has_behavior(object, bhvWarpPipe)) return "warp_pipe";
+    if (ai_bridge_has_behavior(object, bhvKoopaShell)) return "koopa_shell";
+    if (ai_bridge_has_behavior(object, bhvWingCap)) return "wing_cap";
+    if (ai_bridge_has_behavior(object, bhvMetalCap)) return "metal_cap";
+    if (ai_bridge_has_behavior(object, bhvVanishCap)) return "vanish_cap";
+    if (ai_bridge_has_behavior(object, bhv1upWalking)
+        || ai_bridge_has_behavior(object, bhv1upRunningAway)
+        || ai_bridge_has_behavior(object, bhv1upSliding)
+        || ai_bridge_has_behavior(object, bhv1upJumpOnApproach)) return "one_up";
 
     *threat = TRUE;
     if (ai_bridge_has_behavior(object, bhvGoomba)) return "goomba";

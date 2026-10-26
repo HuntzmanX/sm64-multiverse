@@ -49,7 +49,8 @@ With the built game still running from the repository root, run:
 
 The player is now Mario's camera operator while queued AI inputs control Mario:
 
-- **WASD** moves the spectator camera across the level.
+- **W/S** flies in the direction the camera is looking, including up or down;
+  **A/D** strafes horizontally.
 - **Q** descends and **E** ascends.
 - Hold **left click** and move the **mouse** to rotate and tilt the camera; the
   **arrow keys** provide the same control without a mouse.
@@ -81,10 +82,11 @@ health changes. A `say` step is displayed in-game with SM64's native dialog
 font and a translucent text panel. Speech must be the first step of a plan and
 temporarily gives Mario neutral input while it is displayed.
 
-Telemetry includes up to 12 nearby recognised objects within 8000 world units,
-sorted nearest first. Coins, stars, doors, Bob-omb Buddies, and a starter set of
-common enemies are identified. Each object includes a distance, threat flag,
-world position, and camera-relative `stick_toward` hint.
+Telemetry includes up to 20 nearby recognised objects within 8000 world units,
+sorted nearest first. Coins, stars, doors, Bob-omb Buddies, common enemies,
+breakable and cap boxes, trees, cannons, signs, poles, switches, caps, shells,
+1-Ups, recovery hearts, and warp pipes are identified. Each object includes a
+distance, threat flag, world position, and camera-relative `stick_toward` hint.
 
 For goals that depend on changing object positions, the companion can run up to
 six short observe-act cycles. It refreshes telemetry between cycles and lets the
