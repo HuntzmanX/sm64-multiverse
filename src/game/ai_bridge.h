@@ -7,6 +7,7 @@ enum AiBridgeStatus {
     AI_BRIDGE_EXECUTING,
     AI_BRIDGE_COMPLETE,
     AI_BRIDGE_ERROR,
+    AI_BRIDGE_CANCELLED,
 };
 
 /** Poll for a command packet and publish a small Mario state snapshot. */

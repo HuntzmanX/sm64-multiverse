@@ -23,6 +23,9 @@ void ai_controller_clear(void);
 /** Returns TRUE while a step is playing or waiting in the queue. */
 s32 ai_controller_is_active(void);
 
+/** Return and clear the physical-Start emergency cancellation flag. */
+s32 ai_controller_take_cancelled(void);
+
 /** Returns the number of steps waiting after the currently playing step. */
 u32 ai_controller_queued_steps(void);
 

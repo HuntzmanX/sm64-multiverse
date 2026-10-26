@@ -17,6 +17,7 @@ static u32 sQueueTail;
 static u32 sQueueCount;
 static u16 sFramesRemaining;
 static u16 sPreviousPhysicalButtons;
+static s32 sCancelled;
 
 #define AI_CONTROLLER_DEBUG_COMBO (Z_TRIG | R_TRIG | B_BUTTON)
 
@@ -47,6 +48,12 @@ void ai_controller_clear(void) {
 
 s32 ai_controller_is_active(void) {
     return sFramesRemaining != 0 || sQueueCount != 0;
+}
+
+s32 ai_controller_take_cancelled(void) {
+    s32 cancelled = sCancelled;
+    sCancelled = FALSE;
+    return cancelled;
 }
 
 u32 ai_controller_queued_steps(void) {
@@ -91,6 +98,7 @@ void ai_controller_update(OSContPad *pad) {
 
     if (ai_controller_is_active() && (physicalButtonsPressed & START_BUTTON)) {
         ai_controller_clear();
+        sCancelled = TRUE;
         return;
     }
 

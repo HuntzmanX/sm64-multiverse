@@ -241,6 +241,9 @@ def main() -> int:
                 if result == "ERROR":
                     print("The game rejected the command packet.", file=sys.stderr)
                     break
+                if result == "CANCELLED":
+                    print("Instruction cancelled with Start.")
+                    break
                 if result != "COMPLETE":
                     print("Timed out waiting for the game; use /status to inspect it.", file=sys.stderr)
                     break

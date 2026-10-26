@@ -25,6 +25,12 @@ class FeedbackTests(unittest.TestCase):
             path.write_text("COMPLETE\n", encoding="utf-8")
             self.assertEqual(wait_for_completion(path, None, 0.1, 0.001), "COMPLETE")
 
+    def test_cancelled_is_terminal(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "status"
+            path.write_text("CANCELLED\n", encoding="utf-8")
+            self.assertEqual(wait_for_completion(path, None, 0.1, 0.001), "CANCELLED")
+
     def test_result_summary_reports_displacement_and_health(self) -> None:
         before = {"position": {"x": 0, "y": 10, "z": 0}, "health": 2176}
         after = {"position": {"x": 3, "y": 12, "z": 4}, "health": 1920}

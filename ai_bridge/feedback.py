@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 
-TERMINAL_STATUSES = {"COMPLETE", "ERROR"}
+TERMINAL_STATUSES = {"COMPLETE", "ERROR", "CANCELLED"}
 
 
 def read_status(path: Path) -> str:

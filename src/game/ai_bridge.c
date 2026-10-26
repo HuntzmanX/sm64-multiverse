@@ -207,6 +207,8 @@ static const char *ai_bridge_status_text(void) {
             return "COMPLETE";
         case AI_BRIDGE_ERROR:
             return "ERROR";
+        case AI_BRIDGE_CANCELLED:
+            return "CANCELLED";
         default:
             return "READY";
     }
@@ -483,12 +485,16 @@ static void ai_bridge_write_telemetry(void) {
 
 void ai_bridge_update(void) {
     s32 active = ai_controller_is_active();
+    s32 cancelled = ai_controller_take_cancelled();
 
     if (sDialogueTimer > 0) {
         sDialogueTimer--;
     }
 
-    if (sWasActive && !active && sStatus == AI_BRIDGE_EXECUTING) {
+    if (cancelled) {
+        ai_bridge_set_status(AI_BRIDGE_CANCELLED);
+        sDialogueTimer = 0;
+    } else if (sWasActive && !active && sStatus == AI_BRIDGE_EXECUTING) {
         ai_bridge_set_status(AI_BRIDGE_COMPLETE);
     } else if (active && sStatus == AI_BRIDGE_READY) {
         ai_bridge_set_status(AI_BRIDGE_EXECUTING);
