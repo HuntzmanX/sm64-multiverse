@@ -78,7 +78,10 @@ Try instructions such as:
 
 The bridge prints the model's interpretation and each intended step, waits for
 the game to finish the sequence, then reports measured movement, height, and
-health changes. A `say` step is displayed in-game with SM64's native dialog
+health changes. Plain stick-movement steps can finish early after Mario remains
+stationary for several frames, so chained commands do not wait out a stale
+frame budget. Explicit waits and button inputs always retain their requested
+duration. A `say` step is displayed in-game with SM64's native dialog
 font and a translucent text panel. Speech must be the first step of a plan and
 temporarily gives Mario neutral input while it is displayed.
 

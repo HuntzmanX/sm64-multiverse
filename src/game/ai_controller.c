@@ -54,6 +54,10 @@ static f32 sTargetLastMarioZ;
 static f32 sTargetLastDistance;
 static u16 sTargetStuckFrames;
 static u16 sTargetMarkerFrames;
+static f32 sInputLastMarioX;
+static f32 sInputLastMarioZ;
+static u16 sInputElapsedFrames;
+static u16 sInputStationaryFrames;
 
 #ifdef USE_SYSTEM_MALLOC
 /*
@@ -66,6 +70,9 @@ static struct Object *sObjectRegistry[OBJECT_POOL_CAPACITY];
 #endif
 
 #define AI_CONTROLLER_DEBUG_COMBO (Z_TRIG | R_TRIG | B_BUTTON)
+#define AI_CONTROLLER_INPUT_SETTLE_GRACE 12
+#define AI_CONTROLLER_INPUT_STATIONARY_FRAMES 6
+#define AI_CONTROLLER_INPUT_STATIONARY_DISTANCE 1.0f
 
 s16 ai_controller_object_id(struct Object *object) {
     if (object == NULL) return 0;
@@ -197,6 +204,12 @@ static s32 ai_controller_begin_next_step(void) {
     sQueueHead = (sQueueHead + 1) % AI_CONTROLLER_QUEUE_CAPACITY;
     sQueueCount--;
     sFramesRemaining = sCurrentStep.frames;
+    sInputElapsedFrames = 0;
+    sInputStationaryFrames = 0;
+    if (gMarioState != NULL) {
+        sInputLastMarioX = gMarioState->pos[0];
+        sInputLastMarioZ = gMarioState->pos[2];
+    }
     if (sCurrentStep.type == AI_CONTROLLER_STEP_TARGET) {
         sTargetResult = AI_TARGET_TRACKING;
         sTargetStuckFrames = 0;
@@ -269,6 +282,39 @@ static s32 ai_controller_apply_target_step(OSContPad *pad) {
         sTargetMarkerFrames = 0;
     }
     return FALSE;
+}
+
+static s32 ai_controller_input_has_settled(void) {
+    f32 movedX;
+    f32 movedZ;
+    f32 stationaryDistanceSquared = AI_CONTROLLER_INPUT_STATIONARY_DISTANCE
+        * AI_CONTROLLER_INPUT_STATIONARY_DISTANCE;
+
+    /*
+     * Only shorten ordinary movement. Neutral inputs are intentional waits or
+     * button-release windows, while button-bearing inputs must run for their
+     * requested duration so presses are never swallowed.
+     */
+    if (gMarioState == NULL || sCurrentStep.type != AI_CONTROLLER_STEP_INPUT
+        || (sCurrentStep.stickX == 0 && sCurrentStep.stickY == 0)
+        || sCurrentStep.buttons != 0) {
+        return FALSE;
+    }
+
+    movedX = gMarioState->pos[0] - sInputLastMarioX;
+    movedZ = gMarioState->pos[2] - sInputLastMarioZ;
+    sInputLastMarioX = gMarioState->pos[0];
+    sInputLastMarioZ = gMarioState->pos[2];
+    sInputElapsedFrames++;
+
+    if (movedX * movedX + movedZ * movedZ <= stationaryDistanceSquared) {
+        sInputStationaryFrames++;
+    } else {
+        sInputStationaryFrames = 0;
+    }
+
+    return sInputElapsedFrames >= AI_CONTROLLER_INPUT_SETTLE_GRACE
+        && sInputStationaryFrames >= AI_CONTROLLER_INPUT_STATIONARY_FRAMES;
 }
 
 static void ai_controller_apply_world_locked_stick(OSContPad *pad) {
@@ -359,6 +405,14 @@ void ai_controller_update(OSContPad *pad) {
             pad->stick_y = sCurrentStep.stickY;
             pad->button = sCurrentStep.buttons;
             ai_controller_apply_world_locked_stick(pad);
+            if (ai_controller_input_has_settled()) {
+                sFramesRemaining = 0;
+                if (sQueueCount == 0) {
+                    sHasReferenceYaw = FALSE;
+                    return;
+                }
+                continue;
+            }
         }
 
         if (--sFramesRemaining == 0) {
