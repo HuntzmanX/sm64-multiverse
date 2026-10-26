@@ -92,6 +92,9 @@ temporarily gives Mario neutral input while it is displayed.
 A compact HUD-font label reports `AI READY`, `AI THINKING`, `AI ACTING`,
 `AI DONE`, `AI ERROR`, or `AI CANCELLED`. It uses fixed uppercase strings to
 keep the PC texture path as simple as the original working ready indicator.
+Mario's normal standing idle animations remain enabled, but the final transition
+into sleep is suppressed so a delayed command is not spent waking him and the
+camera FOV does not zoom while the model is thinking.
 
 Telemetry includes up to 20 nearby recognised objects within 8000 world units,
 sorted nearest first. Coins, stars, doors, Bob-omb Buddies, common enemies,

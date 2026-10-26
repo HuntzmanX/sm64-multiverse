@@ -123,7 +123,12 @@ s32 act_idle(struct MarioState *m) {
         if ((m->area->terrainType & TERRAIN_MASK) == TERRAIN_SNOW) {
             return set_mario_action(m, ACT_SHIVERING, 0);
         } else {
-            return set_mario_action(m, ACT_START_SLEEPING, 0);
+            // AI control can leave Mario idle while the model observes and
+            // plans. Restart the harmless idle animation cycle instead of
+            // entering sleep, which would consume the next command waking up
+            // and trigger the vanilla sleeping camera zoom.
+            m->actionState = 0;
+            m->actionTimer = 0;
         }
     }
 
