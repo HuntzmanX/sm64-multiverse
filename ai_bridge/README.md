@@ -16,6 +16,11 @@ python ai_bridge/send_demo.py
 Mario should perform the same deterministic run-and-jump sequence, while the
 HUD changes from `AI EXECUTING` to `AI COMPLETE` and then `AI READY`.
 
+The companion automatically looks for the newest live state file in the
+repository root or a `build/*` directory. This supports launching the game from
+MSYS2 or by double-clicking its executable. The selected directory is printed
+when the bridge starts. To override detection, set `SM64_AI_RUNTIME_DIR`.
+
 To enable natural-language commands, set up the companion from the repository
 root in MSYS2:
 

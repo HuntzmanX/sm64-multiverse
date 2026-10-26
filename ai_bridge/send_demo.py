@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from protocol import build_plan_packet, write_packet
+from runtime import COMMAND_FILE_NAME, discover_runtime_directory
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -19,6 +20,7 @@ class Step:
 
 
 def main() -> None:
+    runtime_directory = discover_runtime_directory(ROOT)
     packet = build_plan_packet(
         [
             Step("input", 60, stick_y=80),
@@ -27,8 +29,9 @@ def main() -> None:
             Step("wait", 15),
         ]
     )
-    write_packet(ROOT / ".sm64-ai-command", packet)
-    print("Sent the deterministic run-and-jump packet to SM64.")
+    command_file = runtime_directory / COMMAND_FILE_NAME
+    write_packet(command_file, packet)
+    print(f"Sent the deterministic run-and-jump packet to {command_file}.")
 
 
 if __name__ == "__main__":

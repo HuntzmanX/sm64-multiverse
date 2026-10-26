@@ -11,11 +11,10 @@ from openai import OpenAI
 from pydantic import BaseModel, ConfigDict, Field
 
 from protocol import build_plan_packet, build_status_packet, write_packet
+from runtime import COMMAND_FILE_NAME, STATE_FILE_NAME, discover_runtime_directory
 
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_COMMAND_FILE = ROOT / ".sm64-ai-command"
-DEFAULT_STATE_FILE = ROOT / ".sm64-ai-state.json"
 
 
 class ControlStep(BaseModel):
@@ -51,14 +50,19 @@ wait step must use stick_x=0, stick_y=0, and an empty buttons list. Never exceed
 
 
 def parse_args() -> argparse.Namespace:
+    runtime_directory = discover_runtime_directory(ROOT)
     parser = argparse.ArgumentParser(description="Natural-language controller for SM64")
     parser.add_argument(
         "--model",
         default=os.environ.get("OPENAI_MODEL", "gpt-6-astra"),
         help="OpenAI model name (default: OPENAI_MODEL or gpt-6-astra)",
     )
-    parser.add_argument("--command-file", type=Path, default=DEFAULT_COMMAND_FILE)
-    parser.add_argument("--state-file", type=Path, default=DEFAULT_STATE_FILE)
+    parser.add_argument(
+        "--command-file", type=Path, default=runtime_directory / COMMAND_FILE_NAME
+    )
+    parser.add_argument(
+        "--state-file", type=Path, default=runtime_directory / STATE_FILE_NAME
+    )
     return parser.parse_args()
 
 
@@ -98,6 +102,7 @@ def main() -> int:
 
     client = OpenAI()
     print(f"SM64 AI bridge ready — model: {args.model}")
+    print(f"Game runtime: {args.command_file.parent}")
     print("Enter a command, or /quit to stop.")
 
     while True:
