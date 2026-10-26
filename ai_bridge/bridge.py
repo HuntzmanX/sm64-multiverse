@@ -130,8 +130,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Natural-language controller for SM64")
     parser.add_argument(
         "--model",
-        default=os.environ.get("OPENAI_MODEL", "gpt-6-astra"),
-        help="OpenAI model name (default: OPENAI_MODEL or gpt-6-astra)",
+        default=os.environ.get("OPENAI_MODEL", "gpt-5.6-luna"),
+        help="OpenAI model name (default: OPENAI_MODEL or gpt-5.6-luna)",
     )
     parser.add_argument(
         "--command-file", type=Path, default=runtime_directory / COMMAND_FILE_NAME
