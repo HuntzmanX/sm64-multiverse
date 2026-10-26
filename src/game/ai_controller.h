@@ -17,8 +17,15 @@
  */
 s32 ai_controller_enqueue(s8 stickX, s8 stickY, u16 buttons, u16 frames);
 
+/** Track an object-pool ID live, moving toward (1) or away (-1) from it. */
+s32 ai_controller_enqueue_target(s16 targetId, s8 direction, u8 speed, u16 buttons,
+                                 u16 frames, u16 stopDistance);
+
 /** Anchor queued camera-relative stick values to the telemetry snapshot yaw. */
 void ai_controller_set_reference_yaw(s16 yaw);
+
+/** Clear stale target feedback as a newly accepted plan begins. */
+void ai_controller_begin_plan(void);
 
 /** Stop playback immediately and discard every queued input step. */
 void ai_controller_clear(void);
@@ -31,6 +38,9 @@ s32 ai_controller_take_cancelled(void);
 
 /** Returns the number of steps waiting after the currently playing step. */
 u32 ai_controller_queued_steps(void);
+
+/** Human-readable result of the most recent tracked target step. */
+const char *ai_controller_target_result_text(void);
 
 /**
  * Apply the current queued step to player one's native controller data.

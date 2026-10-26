@@ -78,6 +78,10 @@ def summarize_result(before: dict, after: dict) -> str:
         health_change = after_health - before_health
         parts.append("health unchanged" if health_change == 0 else f"health {health_change:+d}")
 
+    target_result = after.get("target_result")
+    if isinstance(target_result, str) and target_result not in {"", "none"}:
+        parts.append(f"target {target_result.replace('_', ' ')}")
+
     if not parts:
         return "execution completed; telemetry was unavailable"
     return ", ".join(parts)

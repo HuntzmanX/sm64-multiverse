@@ -14,6 +14,10 @@ class Step:
     stick_y: int = 0
     buttons: list[str] = field(default_factory=list)
     text: str = ""
+    target_id: int = 0
+    target_mode: str = "none"
+    speed: int = 0
+    stop_distance: int = 0
 
 
 class ProtocolTests(unittest.TestCase):
@@ -56,6 +60,21 @@ class ProtocolTests(unittest.TestCase):
     def test_say_must_be_first(self) -> None:
         with self.assertRaises(ValueError):
             build_plan_packet([Step("wait", 1), Step("say", 45, text="Hello")])
+
+    def test_target_step_uses_live_object_tracking(self) -> None:
+        packet = build_plan_packet(
+            [
+                Step(
+                    "target",
+                    180,
+                    target_id=17,
+                    target_mode="toward",
+                    speed=70,
+                    stop_distance=150,
+                )
+            ]
+        )
+        self.assertEqual(packet, "SM64AI1\nTARGET 17 1 70 0 180 150\nEND\n")
 
     def test_total_duration_is_limited(self) -> None:
         with self.assertRaises(ValueError):

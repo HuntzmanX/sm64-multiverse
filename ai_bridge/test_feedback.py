@@ -39,6 +39,16 @@ class FeedbackTests(unittest.TestCase):
             "moved 5 units, height +2, health -256",
         )
 
+    def test_result_summary_reports_target_outcome(self) -> None:
+        result = summarize_result(
+            {"position": {"x": 0, "y": 0, "z": 0}},
+            {
+                "position": {"x": 10, "y": 0, "z": 0},
+                "target_result": "stuck",
+            },
+        )
+        self.assertIn("target stuck", result)
+
     def test_wait_for_fresh_state_accepts_an_existing_newer_file(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             path = Path(temporary_directory) / "state"

@@ -43,6 +43,10 @@ struct AiBridgeStep {
     s32 type;
     s8 stickX;
     s8 stickY;
+    s16 targetId;
+    s8 targetDirection;
+    u8 targetSpeed;
+    u16 stopDistance;
     u16 buttons;
     u16 frames;
     char text[AI_BRIDGE_DIALOG_ASCII_LENGTH + 1];
@@ -52,6 +56,7 @@ enum AiBridgeStepType {
     AI_BRIDGE_STEP_INPUT,
     AI_BRIDGE_STEP_WAIT,
     AI_BRIDGE_STEP_SAY,
+    AI_BRIDGE_STEP_TARGET,
 };
 
 struct AiBridgeNearbyObject {
@@ -343,6 +348,10 @@ static s32 ai_bridge_load_packet(void) {
         s32 stickY;
         s32 buttons;
         s32 frames;
+        s32 targetId;
+        s32 targetDirection;
+        s32 targetSpeed;
+        s32 stopDistance;
         char statusText[32];
         char encodedText[(AI_BRIDGE_DIALOG_ASCII_LENGTH * 2) + 1];
 
@@ -357,6 +366,28 @@ static s32 ai_bridge_load_packet(void) {
                 break;
             }
             sawReferenceYaw = TRUE;
+        } else if (sscanf(line, "TARGET %d %d %d %d %d %d", &targetId, &targetDirection,
+                          &targetSpeed, &buttons, &frames, &stopDistance) == 6) {
+            if (stepCount >= AI_BRIDGE_MAX_PACKET_STEPS || targetId < 1
+                || targetId > OBJECT_POOL_CAPACITY
+                || (targetDirection != 1 && targetDirection != -1)
+                || targetSpeed < 1 || targetSpeed > 80 || buttons < 0
+                || (buttons & ~AI_BRIDGE_ALLOWED_BUTTONS) != 0 || frames < 1
+                || frames > AI_BRIDGE_MAX_STEP_FRAMES || stopDistance < 0
+                || stopDistance > 8000 || totalFrames + frames > AI_BRIDGE_MAX_TOTAL_FRAMES) {
+                valid = FALSE;
+                break;
+            }
+            steps[stepCount].type = AI_BRIDGE_STEP_TARGET;
+            steps[stepCount].targetId = targetId;
+            steps[stepCount].targetDirection = targetDirection;
+            steps[stepCount].targetSpeed = targetSpeed;
+            steps[stepCount].stopDistance = stopDistance;
+            steps[stepCount].buttons = buttons;
+            steps[stepCount].frames = frames;
+            steps[stepCount].text[0] = '\0';
+            stepCount++;
+            totalFrames += frames;
         } else if (sscanf(line, "INPUT %d %d %d %d", &stickX, &stickY, &buttons, &frames) == 4) {
             if (stepCount >= AI_BRIDGE_MAX_PACKET_STEPS || stickX < -80 || stickX > 80
                 || stickY < -80 || stickY > 80 || frames < 1 || frames > AI_BRIDGE_MAX_STEP_FRAMES
@@ -429,6 +460,7 @@ static s32 ai_bridge_load_packet(void) {
         return TRUE;
     }
 
+    ai_controller_begin_plan();
     if (sawReferenceYaw) {
         ai_controller_set_reference_yaw((s16) referenceYaw);
     }
@@ -437,7 +469,16 @@ static s32 ai_bridge_load_packet(void) {
         if (steps[i].type == AI_BRIDGE_STEP_SAY) {
             ai_bridge_show_dialogue(steps[i].text, steps[i].frames);
         }
-        if (!ai_controller_enqueue(steps[i].stickX, steps[i].stickY, steps[i].buttons, steps[i].frames)) {
+        if (steps[i].type == AI_BRIDGE_STEP_TARGET) {
+            if (!ai_controller_enqueue_target(steps[i].targetId, steps[i].targetDirection,
+                                              steps[i].targetSpeed, steps[i].buttons,
+                                              steps[i].frames, steps[i].stopDistance)) {
+                ai_controller_clear();
+                ai_bridge_set_status(AI_BRIDGE_ERROR);
+                return TRUE;
+            }
+        } else if (!ai_controller_enqueue(steps[i].stickX, steps[i].stickY,
+                                          steps[i].buttons, steps[i].frames)) {
             ai_controller_clear();
             ai_bridge_set_status(AI_BRIDGE_ERROR);
             return TRUE;
@@ -455,6 +496,8 @@ static void ai_bridge_write_telemetry(void) {
     s32 grounded;
     s32 swimming;
     s32 cutscene;
+    s32 floorType;
+    f32 floorNormalY;
     s16 cameraYaw = 0;
     struct AiBridgeNearbyObject nearby[AI_BRIDGE_MAX_NEARBY_OBJECTS];
     s32 nearbyCount = 0;
@@ -472,6 +515,8 @@ static void ai_bridge_write_telemetry(void) {
     grounded = (gMarioState->action & (ACT_FLAG_AIR | ACT_FLAG_SWIMMING | ACT_FLAG_METAL_WATER)) == 0;
     swimming = (gMarioState->action & (ACT_FLAG_SWIMMING | ACT_FLAG_METAL_WATER)) != 0;
     cutscene = (gMarioState->action & ACT_GROUP_MASK) == ACT_GROUP_CUTSCENE;
+    floorType = gMarioState->floor != NULL ? gMarioState->floor->type : -1;
+    floorNormalY = gMarioState->floor != NULL ? gMarioState->floor->normal.y : 0.0f;
     if (gCamera != NULL) {
         cameraYaw = gCamera->yaw;
     }
@@ -523,17 +568,28 @@ static void ai_bridge_write_telemetry(void) {
             "  \"swimming\": %s,\n"
             "  \"cutscene\": %s,\n"
             "  \"health\": %d,\n"
+            "  \"environment\": {\"floor_height\": %.1f, \"height_above_floor\": %.1f, "
+            "\"floor_type\": %d, \"floor_normal_y\": %.3f, \"touching_wall\": %s, "
+            "\"water_level\": %d},\n"
+            "  \"target_result\": \"%s\",\n"
             "  \"nearby_objects\": [\n",
             gCurrLevelNum, gCurrAreaIndex,
             gMarioState->pos[0], gMarioState->pos[1], gMarioState->pos[2],
             gMarioState->vel[0], gMarioState->vel[1], gMarioState->vel[2],
             gMarioState->forwardVel, gMarioState->faceAngle[1], cameraYaw, gMarioState->action,
             grounded ? "true" : "false", swimming ? "true" : "false",
-            cutscene ? "true" : "false", gMarioState->health);
+            cutscene ? "true" : "false", gMarioState->health,
+            gMarioState->floorHeight, gMarioState->pos[1] - gMarioState->floorHeight,
+            floorType, floorNormalY, gMarioState->wall != NULL ? "true" : "false",
+            gMarioState->waterLevel,
+            ai_controller_target_result_text());
     for (i = 0; i < nearbyCount; i++) {
         struct Object *object = nearby[i].object;
+        s32 objectId = (s32) (object - gObjectPool) + 1;
         f32 dx = object->oPosX - gMarioState->pos[0];
+        f32 dy = object->oPosY - gMarioState->pos[1];
         f32 dz = object->oPosZ - gMarioState->pos[2];
+        f32 horizontalDistance = sqrtf(dx * dx + dz * dz);
         s16 targetYaw = atan2s(dz, dx);
         s16 relativeYaw = targetYaw - cameraYaw;
         // Mario derives movement yaw with atan2s(-stickY, stickX).
@@ -541,10 +597,12 @@ static void ai_bridge_write_telemetry(void) {
         s32 stickX = sins(relativeYaw) * 80.0f;
         s32 stickY = -coss(relativeYaw) * 80.0f;
         fprintf(file,
-                "    {\"type\": \"%s\", \"distance\": %.1f, \"threat\": %s, "
+                "    {\"id\": %d, \"type\": \"%s\", \"distance\": %.1f, "
+                "\"horizontal_distance\": %.1f, \"height_delta\": %.1f, \"threat\": %s, "
                 "\"position\": {\"x\": %.1f, \"y\": %.1f, \"z\": %.1f}, "
                 "\"stick_toward\": {\"x\": %d, \"y\": %d}}%s\n",
-                nearby[i].type, nearby[i].distance, nearby[i].threat ? "true" : "false",
+                objectId, nearby[i].type, nearby[i].distance, horizontalDistance, dy,
+                nearby[i].threat ? "true" : "false",
                 object->oPosX, object->oPosY, object->oPosZ, stickX, stickY,
                 i + 1 < nearbyCount ? "," : "");
     }

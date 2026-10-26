@@ -24,6 +24,10 @@ class StepLike(Protocol):
     buttons: list[str]
     frames: int
     text: str
+    target_id: int
+    target_mode: str
+    speed: int
+    stop_distance: int
 
 
 def encode_buttons(buttons: Iterable[str]) -> int:
@@ -58,7 +62,23 @@ def build_plan_packet(
         if total_frames > 900:
             raise ValueError("A plan cannot exceed 900 frames")
 
-        if step.type == "say":
+        if step.type == "target":
+            if step.stick_x != 0 or step.stick_y != 0 or step.text:
+                raise ValueError("Target steps use live steering and require neutral stick/text")
+            if not 1 <= step.target_id <= 240:
+                raise ValueError("Target ID must be between 1 and 240")
+            if step.target_mode not in {"toward", "away"}:
+                raise ValueError("Target mode must be toward or away")
+            if not 1 <= step.speed <= 80:
+                raise ValueError("Target speed must be between 1 and 80")
+            if not 0 <= step.stop_distance <= 8000:
+                raise ValueError("Target stop distance must be between 0 and 8000")
+            direction = 1 if step.target_mode == "toward" else -1
+            lines.append(
+                f"TARGET {step.target_id} {direction} {step.speed} "
+                f"{encode_buttons(step.buttons)} {step.frames} {step.stop_distance}"
+            )
+        elif step.type == "say":
             if step.stick_x != 0 or step.stick_y != 0 or step.buttons:
                 raise ValueError("Wait and say steps must have neutral controls")
             if step_count != 1:

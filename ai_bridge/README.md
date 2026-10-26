@@ -86,12 +86,22 @@ Telemetry includes up to 20 nearby recognised objects within 8000 world units,
 sorted nearest first. Coins, stars, doors, Bob-omb Buddies, common enemies,
 breakable and cap boxes, trees, cannons, signs, poles, switches, caps, shells,
 1-Ups, recovery hearts, and warp pipes are identified. Each object includes a
-distance, threat flag, world position, and camera-relative `stick_toward` hint.
+stable ID, 3D and horizontal distance, height difference, threat flag, world
+position, and camera-relative `stick_toward` hint. Mario's floor height, height
+above ground, floor type/slope, wall contact, and water level are also reported.
 
 For goals that depend on changing object positions, the companion can run up to
 six short observe-act cycles. It refreshes telemetry between cycles and lets the
 model decide whether the instruction is complete or needs another movement
 burst. The fixed cycle cap prevents an unclear command from running forever.
+
+Object-directed movement uses native live tracking rather than fixed stick
+bursts. Each recognised object receives a stable ID for its lifetime. A target
+step recalculates steering every frame, follows moving targets, ends at a chosen
+distance, and reports `arrived`, `clear`, `target_lost`, `stuck`, or `timeout`.
+The selected target emits periodic sparkles in-game. If Mario barely moves for
+one second, the step stops instead of spending all six cycles running into the
+same wall.
 
 Examples after entering a course with recognised objects nearby:
 

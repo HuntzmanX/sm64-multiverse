@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parent.parent
 class ControlStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["input", "wait", "say"]
+    type: Literal["input", "wait", "say", "target"]
     intent: str = Field(min_length=1, max_length=80)
     stick_x: int = Field(ge=-80, le=80)
     stick_y: int = Field(ge=-80, le=80)
@@ -45,6 +45,10 @@ class ControlStep(BaseModel):
     ] = Field(max_length=8)
     frames: int = Field(ge=1, le=300)
     text: str = Field(max_length=80)
+    target_id: int = Field(ge=0, le=240)
+    target_mode: Literal["none", "toward", "away"]
+    speed: int = Field(ge=0, le=80)
+    stop_distance: int = Field(ge=0, le=8000)
 
     @model_validator(mode="after")
     def validate_step(self) -> "ControlStep":
@@ -56,6 +60,18 @@ class ControlStep(BaseModel):
             raise ValueError("say steps require text")
         if self.type != "say" and self.text:
             raise ValueError("only say steps may contain text")
+        if self.type == "target":
+            if self.stick_x != 0 or self.stick_y != 0:
+                raise ValueError("target steps use neutral manual stick values")
+            if self.target_id == 0 or self.target_mode == "none" or self.speed == 0:
+                raise ValueError("target steps require an ID, direction, and speed")
+        elif (
+            self.target_id != 0
+            or self.target_mode != "none"
+            or self.speed != 0
+            or self.stop_distance != 0
+        ):
+            raise ValueError("only target steps may contain target controls")
         return self
 
 
@@ -75,11 +91,12 @@ means right. Available buttons are A, B, Z, R, C_UP, C_DOWN, C_LEFT, and C_RIGHT
 The game locks each queued stick sequence to the camera orientation at which it begins, so the
 human camera operator can rotate the free-camera without curving Mario's intended world path.
 
-Use type=input for controls and type=wait for neutral pauses. A button press must be followed by a
+Use type=input for ordinary controls and type=wait for neutral pauses. A button press must be followed by a
 step that releases it. Use type=say only when the player explicitly asks Mario to say something;
 say steps use neutral controls, put the spoken words in text, last about 45 frames, and must be the
 first step. Use at most one say step per plan. Set text to an empty string for input and wait steps.
-Give every step a short intent describing what it does.
+Give every step a short intent describing what it does. For input, wait, and say steps set
+target_id=0, target_mode=none, speed=0, and stop_distance=0.
 
 Keep plans short and literal. Do not silently improve ambiguous instructions: choose a defensible
 interpretation and describe it in the interpretation field. Do not pretend to know geometry or
@@ -87,11 +104,22 @@ objects that are absent from the current state snapshot.
 Every wait step must use stick_x=0, stick_y=0, and an empty buttons list. Never exceed 900 total
 frames. Common controls: A jumps, B punches or dives, Z crouches, and the C buttons adjust camera.
 
-The state may include nearby_objects sorted nearest first. Each object has a type, distance, threat,
-position, and stick_toward. To approach an object, copy its stick_toward values into a short input
-step. To flee it, negate both values. Re-check object-dependent or conditional goals after short
-bursts of at most 45 frames and set continue_after_execution=true. Set it false for ordinary
-one-shot commands or when the goal is complete. Explain the current evidence in observation.
+The state may include environment data plus nearby_objects sorted nearest first. Each object has a
+stable id, type, 3D and horizontal distance, height_delta, threat, position, and legacy
+stick_toward hint. Use height_delta and the environment fields to decide when jumping or a direct
+route is unlikely. ALWAYS use type=target rather than manual
+stick values when approaching or fleeing a listed object. Set target_id to its exact id,
+target_mode to toward or away, speed to 50-80, and manual stick values to zero. For toward movement,
+use stop_distance around 40-80 for collectibles, 100-160 for boxes/trees/signs, and 180-300 for
+enemies. For away movement it is the desired safe distance (normally 700-1500). Target steering
+updates every frame, follows moving objects,
+stops automatically, detects being stuck, and visually marks the selected object. Allow up to 300
+frames; it may finish early. Set continue_after_execution only when the larger goal needs another
+observation or action after this tracked movement. If target_result is stuck, do not blindly repeat
+the same target step: try a short jump-assisted target step only when the height/terrain supports it,
+or report that the direct route is blocked. To interact, first use a target step, then use a brief
+released button press: B for a breakable box, A to jump onto a tree/pole, or the appropriate ordinary
+control once within range. Explain the current evidence in observation.
 """
 
 MAX_CONTROL_CYCLES = 6
@@ -185,7 +213,8 @@ def print_status(status_path: Path, state_path: Path) -> None:
             stick = item.get("stick_toward", {})
             threat = " threat" if item.get("threat") else ""
             print(
-                f"  {item.get('type', 'unknown')}: {item.get('distance', '?')} units{threat}; "
+                f"  #{item.get('id', '?')} {item.get('type', 'unknown')}: "
+                f"{item.get('distance', '?')} units, height {item.get('height_delta', '?')}{threat}; "
                 f"stick ({stick.get('x', '?')}, {stick.get('y', '?')})"
             )
     elif isinstance(nearby_objects, list):
@@ -276,6 +305,11 @@ def main() -> int:
                 print(f"Observed: {plan.observation}")
                 for index, step in enumerate(plan.steps, 1):
                     print(f"  {index}. {step.intent} ({step.frames} frames)")
+                    if step.type == "target":
+                        print(
+                            f"     {step.target_mode} object #{step.target_id}; "
+                            f"speed {step.speed}, stop {step.stop_distance}"
+                        )
                     if step.type == "say":
                         print(f"     Mario says: {step.text}")
                 print(f"Queued {len(plan.steps)} steps ({total_frames} frames).")
