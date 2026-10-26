@@ -159,6 +159,7 @@ def print_help() -> None:
 def print_status(status_path: Path, state_path: Path) -> None:
     state = read_state(state_path)
     position = state.get("position")
+    nearby_objects = state.get("nearby_objects")
     print(f"Bridge status: {read_status(status_path)}")
     if isinstance(position, dict):
         print(
@@ -167,6 +168,19 @@ def print_status(status_path: Path, state_path: Path) -> None:
         )
     else:
         print("Mario telemetry is not available yet.")
+    if isinstance(nearby_objects, list) and nearby_objects:
+        print("Nearby objects:")
+        for item in nearby_objects[:8]:
+            if not isinstance(item, dict):
+                continue
+            stick = item.get("stick_toward", {})
+            threat = " threat" if item.get("threat") else ""
+            print(
+                f"  {item.get('type', 'unknown')}: {item.get('distance', '?')} units{threat}; "
+                f"stick ({stick.get('x', '?')}, {stick.get('y', '?')})"
+            )
+    elif isinstance(nearby_objects, list):
+        print("No recognised objects within telemetry range.")
 
 
 def main() -> int:
