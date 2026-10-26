@@ -687,41 +687,33 @@ void ai_bridge_cancel_current(void) {
 }
 
 void ai_bridge_render_status(void) {
-    const char *text;
     const u8 *texture;
-    s32 x = GFX_DIMENSIONS_RECT_FROM_LEFT_EDGE(20);
+    s32 x = GFX_DIMENSIONS_RECT_FROM_LEFT_EDGE(22);
 
     switch (sStatus) {
         case AI_BRIDGE_THINKING:
-            text = "AI THINKING";
             texture = sAiThinkingTexture;
             break;
         case AI_BRIDGE_EXECUTING:
-            text = "AI ACTING";
             texture = sAiActingTexture;
             break;
         case AI_BRIDGE_COMPLETE:
-            text = "AI DONE";
             texture = sAiReadyTexture;
             break;
         case AI_BRIDGE_ERROR:
-            text = "AI ERROR";
             texture = sAiErrorTexture;
             break;
         case AI_BRIDGE_CANCELLED:
-            text = "AI CANCELLED";
             texture = sAiCancelledTexture;
             break;
         default:
-            text = "AI READY";
             texture = sAiReadyTexture;
             break;
     }
 
     gSPDisplayList(gDisplayListHead++, dl_hud_img_begin);
-    render_hud_tex_lut(x, SCREEN_HEIGHT - 70 - 16, texture);
+    render_hud_tex_lut(x, SCREEN_HEIGHT - HUD_TOP_Y - 16, texture);
     gSPDisplayList(gDisplayListHead++, dl_hud_img_end);
-    print_text(x + 20, 70, text);
 }
 
 void ai_bridge_render_dialogue(void) {

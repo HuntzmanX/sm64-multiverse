@@ -4,6 +4,12 @@
 #include <PR/ultratypes.h>
 #include <PR/gbi.h>
 
+#ifdef VERSION_JP
+#define HUD_TOP_Y 210
+#else
+#define HUD_TOP_Y 209
+#endif
+
 enum PowerMeterAnimation {
     POWER_METER_HIDDEN,
     POWER_METER_EMPHASIZED,
