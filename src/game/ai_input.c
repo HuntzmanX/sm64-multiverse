@@ -12,6 +12,7 @@
 #include "dialog_ids.h"
 #include "ai_freecam.h"
 #include "game_init.h"
+#include "gfx_dimensions.h"
 #include "ingame_menu.h"
 #include "memory.h"
 #include "segment2.h"
@@ -25,6 +26,7 @@
 #define KEY_TAB       0x0F
 #define KEY_Q         0x10
 #define KEY_E         0x12
+#define KEY_T         0x14
 #define KEY_ENTER     0x1C
 #define KEY_LEFTSHIFT 0x2A
 #define KEY_RIGHTSHIFT 0x36
@@ -91,16 +93,20 @@ static u8 ai_input_dialog_char(char c) {
 
 static void ai_input_build_display(void) {
     const char *prefix = sSentTimer > 0 ? "SENT: " : "MARIO> ";
+    s32 maxColumns = (s32) ((GFX_DIMENSIONS_FROM_RIGHT_EDGE(16.0f)
+                           - GFX_DIMENSIONS_FROM_LEFT_EDGE(16.0f)) / 8.0f);
     s32 output = 0;
     s32 column = 0;
     s32 i;
+
+    if (maxColumns < 12) maxColumns = 12;
 
     for (i = 0; prefix[i] != '\0' && output < AI_INPUT_ENCODED_LENGTH - 1; i++) {
         sDisplayText[output++] = ai_input_dialog_char(prefix[i]);
         column++;
     }
     for (i = 0; sText[i] != '\0' && output < AI_INPUT_ENCODED_LENGTH - 2; i++) {
-        if (column >= 36) {
+        if (column >= maxColumns) {
             sDisplayText[output++] = DIALOG_CHAR_NEWLINE;
             column = 0;
         }
@@ -138,7 +144,7 @@ s32 ai_input_on_key_down(s32 key) {
     if (key >= 0 && key < (s32) (sizeof(sKeys) / sizeof(sKeys[0]))) sKeys[key] = TRUE;
     if (key == KEY_LEFTSHIFT || key == KEY_RIGHTSHIFT) sShiftDown = TRUE;
 
-    if (!sTyping && key == KEY_TAB && !wasDown) {
+    if (!sTyping && (key == KEY_TAB || key == KEY_T) && !wasDown) {
         sTyping = TRUE;
         sTextLength = 0;
         sText[0] = '\0';
@@ -177,7 +183,7 @@ s32 ai_input_on_key_up(s32 key) {
     if (key == KEY_LEFTSHIFT || key == KEY_RIGHTSHIFT) {
         sShiftDown = sKeys[KEY_LEFTSHIFT] || sKeys[KEY_RIGHTSHIFT];
     }
-    return sTyping || key == KEY_TAB || key == KEY_F1
+    return sTyping || key == KEY_TAB || key == KEY_T || key == KEY_F1
         || (ai_freecam_is_enabled()
             && (key == KEY_Q || key == 0x11 || key == KEY_E
                 || key == 0x1E || key == 0x1F || key == 0x20
@@ -270,18 +276,21 @@ s32 ai_input_take_mouse_y(void) {
 }
 
 void ai_input_render(void) {
+    f32 leftEdge = GFX_DIMENSIONS_FROM_LEFT_EDGE(0.0f);
+    f32 panelWidth = GFX_DIMENSIONS_FROM_RIGHT_EDGE(0.0f) - leftEdge;
+
     if (sSentTimer > 0) sSentTimer--;
     if ((!sTyping && sSentTimer <= 0) || get_dialog_id() != DIALOG_NONE) return;
     ai_input_build_display();
     create_dl_ortho_matrix();
-    create_dl_translation_matrix(MENU_MTX_PUSH, 12.0f, 48.0f, 0.0f);
-    create_dl_scale_matrix(MENU_MTX_NOPUSH, 2.45f, 0.6f, 1.0f);
+    create_dl_translation_matrix(MENU_MTX_PUSH, leftEdge, 64.0f, 0.0f);
+    create_dl_scale_matrix(MENU_MTX_NOPUSH, panelWidth / 130.0f, 0.8f, 1.0f);
     gDPSetEnvColor(gDisplayListHead++, 0, 0, 0, 190);
     gSPDisplayList(gDisplayListHead++, dl_draw_text_bg_box);
     gSPPopMatrix(gDisplayListHead++, G_MTX_MODELVIEW);
     gSPDisplayList(gDisplayListHead++, dl_ia_text_begin);
     gDPSetEnvColor(gDisplayListHead++, 255, 255, 255, 255);
-    print_generic_string(20, 36, sDisplayText);
+    print_generic_string((s16) (leftEdge + 12.0f), 48, sDisplayText);
     gSPDisplayList(gDisplayListHead++, dl_ia_text_end);
 }
 

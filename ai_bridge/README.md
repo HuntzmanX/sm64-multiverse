@@ -56,9 +56,10 @@ The player is now Mario's camera operator while queued AI inputs control Mario:
   **arrow keys** provide the same control without a mouse.
 - **F1** toggles the spectator camera so vanilla camera testing is still
   available.
-- **Tab** opens the in-game command box. Type an instruction and press
+- **Tab** toggles the in-game command box, while **T** opens it without acting
+  as a close shortcut once you are typing. Type an instruction and press
   **Enter** to send it to the running bridge. **Escape** or **Tab** closes the
-  box without sending.
+  box without sending. The panel and text wrapping adapt to widescreen windows.
 - While the command box is open, gameplay shortcuts are suppressed. Outside
   it, **Escape** also acts as Start/pause.
 
