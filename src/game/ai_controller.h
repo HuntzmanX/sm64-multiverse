@@ -6,6 +6,8 @@
 
 #define AI_CONTROLLER_QUEUE_CAPACITY 64
 
+struct Object;
+
 /**
  * Add one controller state to the end of the AI input queue.
  *
@@ -20,6 +22,9 @@ s32 ai_controller_enqueue(s8 stickX, s8 stickY, u16 buttons, u16 frames);
 /** Track an object-pool ID live, moving toward (1) or away (-1) from it. */
 s32 ai_controller_enqueue_target(s16 targetId, s8 direction, u8 speed, u16 buttons,
                                  u16 frames, u16 stopDistance);
+
+/** Return a stable, protocol-safe ID for a live object. */
+s16 ai_controller_object_id(struct Object *object);
 
 /** Anchor queued camera-relative stick values to the telemetry snapshot yaw. */
 void ai_controller_set_reference_yaw(s16 yaw);

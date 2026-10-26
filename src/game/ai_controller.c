@@ -55,7 +55,49 @@ static f32 sTargetLastDistance;
 static u16 sTargetStuckFrames;
 static u16 sTargetMarkerFrames;
 
+#ifdef USE_SYSTEM_MALLOC
+/*
+ * PC builds allocate objects individually rather than defining gObjectPool.
+ * Keep a compact pointer registry so telemetry and TARGET commands can still
+ * share stable IDs. Deallocated object nodes are reused by the engine, which
+ * also makes the ID stable when a pool slot is recycled.
+ */
+static struct Object *sObjectRegistry[OBJECT_POOL_CAPACITY];
+#endif
+
 #define AI_CONTROLLER_DEBUG_COMBO (Z_TRIG | R_TRIG | B_BUTTON)
+
+s16 ai_controller_object_id(struct Object *object) {
+    if (object == NULL) return 0;
+
+#ifdef USE_SYSTEM_MALLOC
+    s32 i;
+
+    for (i = 0; i < OBJECT_POOL_CAPACITY; i++) {
+        if (sObjectRegistry[i] == object) return i + 1;
+    }
+    for (i = 0; i < OBJECT_POOL_CAPACITY; i++) {
+        if (sObjectRegistry[i] == NULL
+            || !(sObjectRegistry[i]->activeFlags & ACTIVE_FLAG_ACTIVE)) {
+            sObjectRegistry[i] = object;
+            return i + 1;
+        }
+    }
+    return 0;
+#else
+    if (object < gObjectPool || object >= gObjectPool + OBJECT_POOL_CAPACITY) return 0;
+    return (s16) (object - gObjectPool) + 1;
+#endif
+}
+
+static struct Object *ai_controller_object_from_id(s16 objectId) {
+    if (objectId < 1 || objectId > OBJECT_POOL_CAPACITY) return NULL;
+#ifdef USE_SYSTEM_MALLOC
+    return sObjectRegistry[objectId - 1];
+#else
+    return &gObjectPool[objectId - 1];
+#endif
+}
 
 s32 ai_controller_enqueue(s8 stickX, s8 stickY, u16 buttons, u16 frames) {
     struct AiControllerStep *step;
@@ -169,9 +211,8 @@ static s32 ai_controller_begin_next_step(void) {
 }
 
 static struct Object *ai_controller_target_object(void) {
-    struct Object *target;
-    if (sCurrentStep.targetId < 1 || sCurrentStep.targetId > OBJECT_POOL_CAPACITY) return NULL;
-    target = &gObjectPool[sCurrentStep.targetId - 1];
+    struct Object *target = ai_controller_object_from_id(sCurrentStep.targetId);
+    if (target == NULL) return NULL;
     if (!(target->activeFlags & ACTIVE_FLAG_ACTIVE)
         || (target->activeFlags & ACTIVE_FLAG_IN_DIFFERENT_ROOM)) return NULL;
     return target;

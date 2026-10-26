@@ -585,7 +585,7 @@ static void ai_bridge_write_telemetry(void) {
             ai_controller_target_result_text());
     for (i = 0; i < nearbyCount; i++) {
         struct Object *object = nearby[i].object;
-        s32 objectId = (s32) (object - gObjectPool) + 1;
+        s32 objectId = ai_controller_object_id(object);
         f32 dx = object->oPosX - gMarioState->pos[0];
         f32 dy = object->oPosY - gMarioState->pos[1];
         f32 dz = object->oPosZ - gMarioState->pos[2];
