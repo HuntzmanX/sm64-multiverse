@@ -50,6 +50,14 @@ build/*
 *.z64
 *.map
 .assets-local.txt
+.sm64-ai-command
+.sm64-ai-command.tmp
+.sm64-ai-state.json
+.sm64-ai-state.json.tmp
+.sm64-ai-status
+.sm64-ai-status.tmp
+__pycache__/
+*.py[cod]
 sm64_save_file.bin
 sm64config.txt
 

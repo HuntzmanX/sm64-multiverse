@@ -3,6 +3,7 @@
 #include "sm64.h"
 #include "gfx_dimensions.h"
 #include "audio/external.h"
+#include "ai_bridge.h"
 #include "ai_controller.h"
 #include "buffers/buffers.h"
 #include "buffers/gfx_output_buffer.h"
@@ -560,6 +561,10 @@ void read_controller_inputs(void) {
 #endif
     }
     run_demo_inputs();
+
+    // Poll the local companion before applying the current queued controller
+    // step. The bridge never performs network work inside the game process.
+    ai_bridge_update();
 
     // AI commands use the same OSContPad path as physical input. This keeps
     // Mario's movement code vanilla and makes queued commands indistinguishable

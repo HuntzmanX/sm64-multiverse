@@ -24,3 +24,16 @@ controller.
 The debug combination and canned sequence are temporary scaffolding. They will
 be replaced by the command-entry interface once the control path is proven on a
 real build.
+
+## Natural-language bridge
+
+`ai_bridge/bridge.py` is a local companion that uses the OpenAI Responses API
+to turn a typed instruction into validated input and wait steps. The bridge
+passes those steps to the game using small atomic command files; API keys and
+network requests never enter the game process.
+
+The game publishes a basic state snapshot containing Mario's position,
+velocity, facing direction, action, health, level, area, and camera direction.
+Object and geometry awareness are intentionally postponed.
+
+See `ai_bridge/README.md` for setup and testing instructions.

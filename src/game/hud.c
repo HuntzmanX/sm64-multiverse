@@ -2,6 +2,7 @@
 
 #include "sm64.h"
 #include "actors/common1.h"
+#include "ai_bridge.h"
 #include "gfx_dimensions.h"
 #include "game_init.h"
 #include "level_update.h"
@@ -475,5 +476,7 @@ void render_hud(void) {
         if (hudDisplayFlags & HUD_DISPLAY_FLAG_TIMER) {
             render_hud_timer();
         }
+
+        ai_bridge_render_status();
     }
 }
