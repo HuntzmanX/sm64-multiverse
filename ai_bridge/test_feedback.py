@@ -1,0 +1,33 @@
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+
+from feedback import read_status, summarize_result, wait_for_completion
+
+
+class FeedbackTests(unittest.TestCase):
+    def test_read_status_normalizes_text(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "status"
+            path.write_text("complete\n", encoding="utf-8")
+            self.assertEqual(read_status(path), "COMPLETE")
+
+    def test_wait_for_completion_accepts_new_terminal_status(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "status"
+            path.write_text("COMPLETE\n", encoding="utf-8")
+            self.assertEqual(wait_for_completion(path, None, 0.1, 0.001), "COMPLETE")
+
+    def test_result_summary_reports_displacement_and_health(self) -> None:
+        before = {"position": {"x": 0, "y": 10, "z": 0}, "health": 2176}
+        after = {"position": {"x": 3, "y": 12, "z": 4}, "health": 1920}
+        self.assertEqual(
+            summarize_result(before, after),
+            "moved 5 units, height +2, health -256",
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

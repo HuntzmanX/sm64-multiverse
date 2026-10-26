@@ -12,7 +12,7 @@ enum AiBridgeStatus {
 /** Poll for a command packet and publish a small Mario state snapshot. */
 void ai_bridge_update(void);
 
-/** Render the current bridge state in the lower-left corner of the HUD. */
+/** Reserved for a future renderer-safe in-game status display. */
 void ai_bridge_render_status(void);
 
 #endif // AI_BRIDGE_H

@@ -51,9 +51,9 @@ def build_plan_packet(steps: Iterable[StepLike]) -> str:
         if total_frames > 900:
             raise ValueError("A plan cannot exceed 900 frames")
 
-        if step.type == "wait":
+        if step.type in {"wait", "say"}:
             if step.stick_x != 0 or step.stick_y != 0 or step.buttons:
-                raise ValueError("Wait steps must have neutral controls")
+                raise ValueError("Wait and say steps must have neutral controls")
             lines.append(f"WAIT {step.frames}")
         elif step.type == "input":
             if not -80 <= step.stick_x <= 80 or not -80 <= step.stick_y <= 80:

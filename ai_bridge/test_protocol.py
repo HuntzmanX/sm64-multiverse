@@ -13,6 +13,7 @@ class Step:
     stick_x: int = 0
     stick_y: int = 0
     buttons: list[str] = field(default_factory=list)
+    text: str = ""
 
 
 class ProtocolTests(unittest.TestCase):
@@ -35,6 +36,10 @@ class ProtocolTests(unittest.TestCase):
     def test_wait_must_be_neutral(self) -> None:
         with self.assertRaises(ValueError):
             build_plan_packet([Step("wait", 10, stick_y=80)])
+
+    def test_say_becomes_a_neutral_timed_step(self) -> None:
+        packet = build_plan_packet([Step("say", 45, text="Let's-a go!")])
+        self.assertEqual(packet, "SM64AI1\nWAIT 45\nEND\n")
 
     def test_total_duration_is_limited(self) -> None:
         with self.assertRaises(ValueError):

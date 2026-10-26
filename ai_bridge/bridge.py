@@ -4,14 +4,21 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Literal
 
 from openai import OpenAI
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from feedback import read_status, status_mtime, summarize_result, wait_for_completion
 from protocol import build_plan_packet, build_status_packet, write_packet
-from runtime import COMMAND_FILE_NAME, STATE_FILE_NAME, discover_runtime_directory
+from runtime import (
+    COMMAND_FILE_NAME,
+    STATE_FILE_NAME,
+    STATUS_FILE_NAME,
+    discover_runtime_directory,
+)
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -20,13 +27,27 @@ ROOT = Path(__file__).resolve().parent.parent
 class ControlStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["input", "wait"]
+    type: Literal["input", "wait", "say"]
+    intent: str = Field(min_length=1, max_length=80)
     stick_x: int = Field(ge=-80, le=80)
     stick_y: int = Field(ge=-80, le=80)
     buttons: list[
         Literal["A", "B", "Z", "R", "C_UP", "C_DOWN", "C_LEFT", "C_RIGHT"]
     ] = Field(max_length=8)
     frames: int = Field(ge=1, le=300)
+    text: str = Field(max_length=80)
+
+    @model_validator(mode="after")
+    def validate_step(self) -> "ControlStep":
+        if self.type in {"wait", "say"} and (
+            self.stick_x != 0 or self.stick_y != 0 or self.buttons
+        ):
+            raise ValueError("wait and say steps must use neutral controls")
+        if self.type == "say" and not self.text.strip():
+            raise ValueError("say steps require text")
+        if self.type != "say" and self.text:
+            raise ValueError("only say steps may contain text")
+        return self
 
 
 class ControlPlan(BaseModel):
@@ -42,10 +63,15 @@ forward relative to the camera, negative Y means backward, negative X means left
 means right. Available buttons are A, B, Z, R, C_UP, C_DOWN, C_LEFT, and C_RIGHT.
 
 Use type=input for controls and type=wait for neutral pauses. A button press must be followed by a
-step that releases it. Keep plans short and literal. Do not silently improve ambiguous instructions:
-choose a defensible interpretation and describe it in the interpretation field. The state snapshot
-does not contain nearby objects or geometry yet, so do not pretend to know their positions. Every
-wait step must use stick_x=0, stick_y=0, and an empty buttons list. Never exceed 900 total frames.
+step that releases it. Use type=say only when the player explicitly asks Mario to say something;
+say steps use neutral controls, put the spoken words in text, and last about 45 frames. Set text to
+an empty string for input and wait steps. Give every step a short intent describing what it does.
+
+Keep plans short and literal. Do not silently improve ambiguous instructions: choose a defensible
+interpretation and describe it in the interpretation field. The state snapshot does not contain
+nearby objects or geometry yet, so do not pretend to know their positions or claim to react to them.
+Every wait step must use stick_x=0, stick_y=0, and an empty buttons list. Never exceed 900 total
+frames. Common controls: A jumps, B punches or dives, Z crouches, and the C buttons adjust camera.
 """
 
 
@@ -62,6 +88,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--state-file", type=Path, default=runtime_directory / STATE_FILE_NAME
+    )
+    parser.add_argument(
+        "--status-file", type=Path, default=runtime_directory / STATUS_FILE_NAME
     )
     return parser.parse_args()
 
@@ -94,6 +123,27 @@ def request_plan(client: OpenAI, model: str, command: str, state: dict) -> Contr
     return response.output_parsed
 
 
+def print_help() -> None:
+    print("Commands:")
+    print("  <instruction>  Ask Mario to perform a controller sequence")
+    print("  /status        Show the game bridge status and latest position")
+    print("  /help          Show this help")
+    print("  /quit          Stop the companion")
+
+
+def print_status(status_path: Path, state_path: Path) -> None:
+    state = read_state(state_path)
+    position = state.get("position")
+    print(f"Bridge status: {read_status(status_path)}")
+    if isinstance(position, dict):
+        print(
+            "Mario position: "
+            f"({position.get('x', '?')}, {position.get('y', '?')}, {position.get('z', '?')})"
+        )
+    else:
+        print("Mario telemetry is not available yet.")
+
+
 def main() -> int:
     args = parse_args()
     if not os.environ.get("OPENAI_API_KEY"):
@@ -103,7 +153,7 @@ def main() -> int:
     client = OpenAI()
     print(f"SM64 AI bridge ready — model: {args.model}")
     print(f"Game runtime: {args.command_file.parent}")
-    print("Enter a command, or /quit to stop.")
+    print("Enter a command, or /help for bridge commands.")
 
     while True:
         try:
@@ -116,14 +166,40 @@ def main() -> int:
             continue
         if command.lower() in {"/quit", "/exit"}:
             break
+        if command.lower() == "/help":
+            print_help()
+            continue
+        if command.lower() == "/status":
+            print_status(args.status_file, args.state_file)
+            continue
 
+        before_state = read_state(args.state_file)
         write_packet(args.command_file, build_status_packet("THINKING"))
         try:
-            plan = request_plan(client, args.model, command, read_state(args.state_file))
+            plan = request_plan(client, args.model, command, before_state)
             packet = build_plan_packet(plan.steps)
+            total_frames = sum(step.frames for step in plan.steps)
             print(f"Mario understood: {plan.interpretation}")
-            print(f"Queued {len(plan.steps)} steps ({sum(step.frames for step in plan.steps)} frames).")
+            for index, step in enumerate(plan.steps, 1):
+                print(f"  {index}. {step.intent} ({step.frames} frames)")
+                if step.type == "say":
+                    print(f"     Mario says: {step.text}")
+            print(f"Queued {len(plan.steps)} steps ({total_frames} frames).")
+
+            previous_status_mtime = status_mtime(args.status_file)
             write_packet(args.command_file, packet)
+            result = wait_for_completion(
+                args.status_file,
+                previous_status_mtime,
+                timeout_seconds=max(8.0, total_frames / 30.0 + 5.0),
+            )
+            if result == "COMPLETE":
+                time.sleep(0.1)
+                print(f"Result: {summarize_result(before_state, read_state(args.state_file))}.")
+            elif result == "ERROR":
+                print("The game rejected the command packet.", file=sys.stderr)
+            else:
+                print("Timed out waiting for the game; use /status to inspect it.", file=sys.stderr)
         except Exception as exc:
             write_packet(args.command_file, build_status_packet("ERROR"))
             print(f"Command failed: {exc}", file=sys.stderr)
