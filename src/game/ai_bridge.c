@@ -467,8 +467,10 @@ static void ai_bridge_write_telemetry(void) {
         f32 dz = object->oPosZ - gMarioState->pos[2];
         s16 targetYaw = atan2s(dz, dx);
         s16 relativeYaw = targetYaw - cameraYaw;
-        s32 stickX = coss(relativeYaw) * 80.0f;
-        s32 stickY = -sins(relativeYaw) * 80.0f;
+        // Mario derives movement yaw with atan2s(-stickY, stickX).
+        // SM64 yaw 0 points along +Z, so X uses sine and Y uses -cosine.
+        s32 stickX = sins(relativeYaw) * 80.0f;
+        s32 stickY = -coss(relativeYaw) * 80.0f;
         fprintf(file,
                 "    {\"type\": \"%s\", \"distance\": %.1f, \"threat\": %s, "
                 "\"position\": {\"x\": %.1f, \"y\": %.1f, \"z\": %.1f}, "

@@ -96,8 +96,9 @@ static void ai_controller_apply_world_locked_stick(OSContPad *pad) {
     delta = sReferenceCameraYaw - gCamera->yaw;
     cosine = coss(delta);
     sine = sins(delta);
-    stickX = sCurrentStep.stickX * cosine + sCurrentStep.stickY * sine;
-    stickY = sCurrentStep.stickY * cosine - sCurrentStep.stickX * sine;
+    // Preserve atan2s(-stickY, stickX) + cameraYaw as the camera rotates.
+    stickX = sCurrentStep.stickX * cosine - sCurrentStep.stickY * sine;
+    stickY = sCurrentStep.stickY * cosine + sCurrentStep.stickX * sine;
     if (stickX > 80) stickX = 80;
     if (stickX < -80) stickX = -80;
     if (stickY > 80) stickY = 80;
