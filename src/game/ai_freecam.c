@@ -59,7 +59,7 @@ void ai_freecam_update(struct Camera *camera) {
     right = ai_input_move_right();
     vertical = ai_input_move_vertical();
     sViewYaw += ai_input_look_yaw() * AI_FREECAM_YAW_SPEED
-              + ai_input_take_mouse_x() * AI_FREECAM_MOUSE_SPEED;
+              - ai_input_take_mouse_x() * AI_FREECAM_MOUSE_SPEED;
     sViewPitch += ai_input_look_pitch() * AI_FREECAM_PITCH_SPEED
                 - ai_input_take_mouse_y() * AI_FREECAM_MOUSE_SPEED;
     if (sViewPitch > AI_FREECAM_MAX_PITCH) sViewPitch = AI_FREECAM_MAX_PITCH;
