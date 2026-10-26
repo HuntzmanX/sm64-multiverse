@@ -40,6 +40,7 @@ void ai_freecam_update(struct Camera *camera) {
     Vec3f focus;
     s32 forward;
     s32 right;
+    s32 vertical;
     s16 cameraYaw;
 
     if (ai_input_take_freecam_toggle()) {
@@ -56,6 +57,7 @@ void ai_freecam_update(struct Camera *camera) {
 
     forward = ai_input_move_forward();
     right = ai_input_move_right();
+    vertical = ai_input_move_vertical();
     sViewYaw += ai_input_look_yaw() * AI_FREECAM_YAW_SPEED
               + ai_input_take_mouse_x() * AI_FREECAM_MOUSE_SPEED;
     sViewPitch += ai_input_look_pitch() * AI_FREECAM_PITCH_SPEED
@@ -64,6 +66,7 @@ void ai_freecam_update(struct Camera *camera) {
     if (sViewPitch < -AI_FREECAM_MAX_PITCH) sViewPitch = -AI_FREECAM_MAX_PITCH;
 
     sPosition[0] += (forward * sins(sViewYaw) + right * coss(sViewYaw)) * AI_FREECAM_MOVE_SPEED;
+    sPosition[1] += vertical * AI_FREECAM_MOVE_SPEED;
     sPosition[2] += (forward * coss(sViewYaw) - right * sins(sViewYaw)) * AI_FREECAM_MOVE_SPEED;
     vec3f_set_dist_and_angle(sPosition, focus, AI_FREECAM_FOCUS_DISTANCE, sViewPitch, sViewYaw);
     cameraYaw = sViewYaw + 0x8000;

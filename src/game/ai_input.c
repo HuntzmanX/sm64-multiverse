@@ -23,6 +23,8 @@
 #define KEY_ESCAPE    0x01
 #define KEY_BACKSPACE 0x0E
 #define KEY_TAB       0x0F
+#define KEY_Q         0x10
+#define KEY_E         0x12
 #define KEY_ENTER     0x1C
 #define KEY_LEFTSHIFT 0x2A
 #define KEY_RIGHTSHIFT 0x36
@@ -165,7 +167,8 @@ s32 ai_input_on_key_down(s32 key) {
     }
 
     return ai_freecam_is_enabled()
-        && (key == 0x11 || key == 0x1E || key == 0x1F || key == 0x20
+        && (key == KEY_Q || key == 0x11 || key == KEY_E
+            || key == 0x1E || key == 0x1F || key == 0x20
             || key == KEY_UP || key == KEY_DOWN || key == KEY_LEFT || key == KEY_RIGHT);
 }
 
@@ -176,7 +179,8 @@ s32 ai_input_on_key_up(s32 key) {
     }
     return sTyping || key == KEY_TAB || key == KEY_F1
         || (ai_freecam_is_enabled()
-            && (key == 0x11 || key == 0x1E || key == 0x1F || key == 0x20
+            && (key == KEY_Q || key == 0x11 || key == KEY_E
+                || key == 0x1E || key == 0x1F || key == 0x20
                 || key == KEY_UP || key == KEY_DOWN || key == KEY_LEFT || key == KEY_RIGHT));
 }
 
@@ -211,13 +215,18 @@ s32 ai_input_move_forward(void) {
 
 s32 ai_input_move_right(void) {
     if (sTyping) return 0;
-    return sKeys[0x20] - sKeys[0x1E] + (sPhysicalStickX > 30) - (sPhysicalStickX < -30);
+    return sKeys[0x1E] - sKeys[0x20] + (sPhysicalStickX < -30) - (sPhysicalStickX > 30);
+}
+
+s32 ai_input_move_vertical(void) {
+    if (sTyping) return 0;
+    return sKeys[KEY_E] - sKeys[KEY_Q];
 }
 
 s32 ai_input_look_yaw(void) {
     if (sTyping) return 0;
-    return sKeys[KEY_RIGHT] - sKeys[KEY_LEFT]
-        + !!(sPhysicalButtons & R_CBUTTONS) - !!(sPhysicalButtons & L_CBUTTONS);
+    return sKeys[KEY_LEFT] - sKeys[KEY_RIGHT]
+        + !!(sPhysicalButtons & L_CBUTTONS) - !!(sPhysicalButtons & R_CBUTTONS);
 }
 
 s32 ai_input_look_pitch(void) {
@@ -284,6 +293,7 @@ void ai_input_on_all_keys_up(void) {}
 void ai_input_capture_physical_pad(UNUSED OSContPad *pad) {}
 s32 ai_input_move_forward(void) { return 0; }
 s32 ai_input_move_right(void) { return 0; }
+s32 ai_input_move_vertical(void) { return 0; }
 s32 ai_input_look_yaw(void) { return 0; }
 s32 ai_input_look_pitch(void) { return 0; }
 s32 ai_input_is_typing(void) { return FALSE; }

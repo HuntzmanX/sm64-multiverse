@@ -15,6 +15,7 @@ void ai_input_capture_physical_pad(OSContPad *pad);
 
 s32 ai_input_move_forward(void);
 s32 ai_input_move_right(void);
+s32 ai_input_move_vertical(void);
 s32 ai_input_look_yaw(void);
 s32 ai_input_look_pitch(void);
 s32 ai_input_is_typing(void);
