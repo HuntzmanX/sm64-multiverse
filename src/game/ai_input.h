@@ -2,6 +2,7 @@
 #define AI_INPUT_H
 
 #include <PR/ultratypes.h>
+#include <PR/os_cont.h>
 
 #ifdef __cplusplus
 extern "C" {
