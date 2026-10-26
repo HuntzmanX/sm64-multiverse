@@ -611,8 +611,16 @@ load: $(ROM)
 libultra: $(BUILD_DIR)/libultra.a
 
 # Extra object file dependencies
+AI_STATUS_TEXTURES := \
+  $(BUILD_DIR)/assets/ai-ready.rgba16.inc.c \
+  $(BUILD_DIR)/assets/ai-thinking.rgba16.inc.c \
+  $(BUILD_DIR)/assets/ai_acting.rgba16.inc.c \
+  $(BUILD_DIR)/assets/ai-error.rgba16.inc.c \
+  $(BUILD_DIR)/assets/ai-cancelled.rgba16.inc.c
+
 $(BUILD_DIR)/asm/boot.o:              $(IPL3_RAW_FILES)
 $(BUILD_DIR)/src/game/crash_screen.o: $(CRASH_TEXTURE_C_FILES)
+$(BUILD_DIR)/src/game/ai_bridge.o:    $(AI_STATUS_TEXTURES)
 $(BUILD_DIR)/lib/rsp.o:               $(BUILD_DIR)/rsp/rspboot.bin $(BUILD_DIR)/rsp/fast3d.bin $(BUILD_DIR)/rsp/audio.bin
 $(SOUND_BIN_DIR)/sound_data.o:        $(SOUND_BIN_DIR)/sound_data.ctl.inc.c $(SOUND_BIN_DIR)/sound_data.tbl.inc.c $(SOUND_BIN_DIR)/sequences.bin.inc.c $(SOUND_BIN_DIR)/bank_sets.inc.c
 $(BUILD_DIR)/levels/scripts.o:        $(BUILD_DIR)/include/level_headers.h
@@ -669,6 +677,11 @@ $(BUILD_DIR)/src/game/ingame_menu.o: $(BUILD_DIR)/include/text_strings.h
 # Texture Generation                                                           #
 #==============================================================================#
 TEXTURE_ENCODING := u8
+
+# AI HUD icons keep simple asset names while compiling to native RGBA16 textures.
+$(BUILD_DIR)/assets/%.rgba16.inc.c: assets/%.png
+	$(call print,Converting:,$<,$@)
+	$(V)$(N64GRAPHICS) -s $(TEXTURE_ENCODING) -i $@ -g $< -f rgba16
 
 # Convert PNGs to RGBA32, RGBA16, IA16, IA8, IA4, IA1, I8, I4 binary files
 $(BUILD_DIR)/%: %.png

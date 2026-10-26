@@ -61,7 +61,7 @@ static struct CameraHUD sCameraHUD = { CAM_STATUS_NONE };
 /**
  * Renders a rgba16 16x16 glyph texture from a table list.
  */
-void render_hud_tex_lut(s32 x, s32 y, u8 *texture) {
+void render_hud_tex_lut(s32 x, s32 y, const u8 *texture) {
     gDPPipeSync(gDisplayListHead++);
     gDPSetTextureImage(gDisplayListHead++, G_IM_FMT_RGBA, G_IM_SIZ_16b, 1, texture);
     gSPDisplayList(gDisplayListHead++, &dl_hud_img_load_tex_block);

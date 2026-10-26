@@ -17,6 +17,7 @@
 #include "engine/math_util.h"
 #include "game_init.h"
 #include "gfx_dimensions.h"
+#include "hud.h"
 #include "ingame_menu.h"
 #include "level_update.h"
 #include "memory.h"
@@ -74,6 +75,26 @@ static s32 sTelemetryTimer;
 static s32 sCompleteTimer;
 static u8 sDialogueText[AI_BRIDGE_DIALOG_ENCODED_LENGTH];
 static s32 sDialogueTimer;
+
+ALIGNED8 static const Texture sAiReadyTexture[] = {
+#include "assets/ai-ready.rgba16.inc.c"
+};
+
+ALIGNED8 static const Texture sAiThinkingTexture[] = {
+#include "assets/ai-thinking.rgba16.inc.c"
+};
+
+ALIGNED8 static const Texture sAiActingTexture[] = {
+#include "assets/ai_acting.rgba16.inc.c"
+};
+
+ALIGNED8 static const Texture sAiErrorTexture[] = {
+#include "assets/ai-error.rgba16.inc.c"
+};
+
+ALIGNED8 static const Texture sAiCancelledTexture[] = {
+#include "assets/ai-cancelled.rgba16.inc.c"
+};
 
 static s32 ai_bridge_has_behavior(struct Object *object, const BehaviorScript *behavior) {
     return object->behavior == segmented_to_virtual(behavior);
@@ -667,29 +688,40 @@ void ai_bridge_cancel_current(void) {
 
 void ai_bridge_render_status(void) {
     const char *text;
+    const u8 *texture;
+    s32 x = GFX_DIMENSIONS_RECT_FROM_LEFT_EDGE(20);
 
     switch (sStatus) {
         case AI_BRIDGE_THINKING:
             text = "AI THINKING";
+            texture = sAiThinkingTexture;
             break;
         case AI_BRIDGE_EXECUTING:
             text = "AI ACTING";
+            texture = sAiActingTexture;
             break;
         case AI_BRIDGE_COMPLETE:
             text = "AI DONE";
+            texture = sAiReadyTexture;
             break;
         case AI_BRIDGE_ERROR:
             text = "AI ERROR";
+            texture = sAiErrorTexture;
             break;
         case AI_BRIDGE_CANCELLED:
             text = "AI CANCELLED";
+            texture = sAiCancelledTexture;
             break;
         default:
             text = "AI READY";
+            texture = sAiReadyTexture;
             break;
     }
 
-    print_text(GFX_DIMENSIONS_RECT_FROM_LEFT_EDGE(20), 70, text);
+    gSPDisplayList(gDisplayListHead++, dl_hud_img_begin);
+    render_hud_tex_lut(x, SCREEN_HEIGHT - 70 - 16, texture);
+    gSPDisplayList(gDisplayListHead++, dl_hud_img_end);
+    print_text(x + 20, 70, text);
 }
 
 void ai_bridge_render_dialogue(void) {

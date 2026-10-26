@@ -22,6 +22,7 @@ enum CameraHUDLut {
 };
 
 void set_hud_camera_status(s16 status);
+void render_hud_tex_lut(s32 x, s32 y, const u8 *texture);
 void render_hud(void);
 
 #endif // HUD_H
