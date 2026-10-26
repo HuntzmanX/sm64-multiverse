@@ -79,7 +79,7 @@ health changes. A `say` step is displayed in-game with SM64's native dialog
 font and a translucent text panel. Speech must be the first step of a plan and
 temporarily gives Mario neutral input while it is displayed.
 
-Telemetry includes up to 12 nearby recognised objects within 4000 world units,
+Telemetry includes up to 12 nearby recognised objects within 8000 world units,
 sorted nearest first. Coins, stars, doors, Bob-omb Buddies, and a starter set of
 common enemies are identified. Each object includes a distance, threat flag,
 world position, and camera-relative `stick_toward` hint.
