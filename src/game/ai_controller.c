@@ -18,7 +18,7 @@ static u32 sQueueCount;
 static u16 sFramesRemaining;
 static u16 sPreviousPhysicalButtons;
 
-#define AI_CONTROLLER_DEBUG_COMBO (L_TRIG | R_TRIG | D_JPAD)
+#define AI_CONTROLLER_DEBUG_COMBO (Z_TRIG | R_TRIG | B_BUTTON)
 
 s32 ai_controller_enqueue(s8 stickX, s8 stickY, u16 buttons, u16 frames) {
     struct AiControllerStep *step;
@@ -94,10 +94,10 @@ void ai_controller_update(OSContPad *pad) {
         return;
     }
 
-    // Temporary development trigger. Hold L + R, then press D-pad Down.
+    // Temporary development trigger. Hold Z + R, then press B.
     if (!ai_controller_is_active()
         && (physicalButtons & AI_CONTROLLER_DEBUG_COMBO) == AI_CONTROLLER_DEBUG_COMBO
-        && (physicalButtonsPressed & D_JPAD)) {
+        && (physicalButtonsPressed & B_BUTTON)) {
         ai_controller_queue_debug_sequence();
     }
 

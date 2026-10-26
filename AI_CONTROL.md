@@ -16,7 +16,7 @@ without coupling network or JSON code to Mario's movement implementation.
 
 ## Development test
 
-While controlling Mario, hold **L + R** and press **D-pad Down**. Physical input
+While controlling Mario, hold **Z + R** and press **B**. Physical input
 will be replaced temporarily with a canned run-and-jump sequence. Press
 **Start** during playback to cancel immediately and return control to the real
 controller.
