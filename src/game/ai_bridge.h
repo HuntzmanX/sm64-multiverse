@@ -15,4 +15,7 @@ void ai_bridge_update(void);
 /** Reserved for a future renderer-safe in-game status display. */
 void ai_bridge_render_status(void);
 
+/** Render queued Mario speech with the native dialog font. */
+void ai_bridge_render_dialogue(void);
+
 #endif // AI_BRIDGE_H

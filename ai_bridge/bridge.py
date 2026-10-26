@@ -4,14 +4,19 @@ import argparse
 import json
 import os
 import sys
-import time
 from pathlib import Path
 from typing import Literal
 
 from openai import OpenAI
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from feedback import read_status, status_mtime, summarize_result, wait_for_completion
+from feedback import (
+    read_status,
+    status_mtime,
+    summarize_result,
+    wait_for_completion,
+    wait_for_fresh_state,
+)
 from protocol import build_plan_packet, build_status_packet, write_packet
 from runtime import (
     COMMAND_FILE_NAME,
@@ -54,6 +59,8 @@ class ControlPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     interpretation: str
+    observation: str = Field(min_length=1, max_length=200)
+    continue_after_execution: bool
     steps: list[ControlStep] = Field(min_length=1, max_length=32)
 
 
@@ -64,15 +71,24 @@ means right. Available buttons are A, B, Z, R, C_UP, C_DOWN, C_LEFT, and C_RIGHT
 
 Use type=input for controls and type=wait for neutral pauses. A button press must be followed by a
 step that releases it. Use type=say only when the player explicitly asks Mario to say something;
-say steps use neutral controls, put the spoken words in text, and last about 45 frames. Set text to
-an empty string for input and wait steps. Give every step a short intent describing what it does.
+say steps use neutral controls, put the spoken words in text, last about 45 frames, and must be the
+first step. Use at most one say step per plan. Set text to an empty string for input and wait steps.
+Give every step a short intent describing what it does.
 
 Keep plans short and literal. Do not silently improve ambiguous instructions: choose a defensible
 interpretation and describe it in the interpretation field. The state snapshot does not contain
 nearby objects or geometry yet, so do not pretend to know their positions or claim to react to them.
 Every wait step must use stick_x=0, stick_y=0, and an empty buttons list. Never exceed 900 total
 frames. Common controls: A jumps, B punches or dives, Z crouches, and the C buttons adjust camera.
+
+The state may include nearby_objects sorted nearest first. Each object has a type, distance, threat,
+position, and stick_toward. To approach an object, copy its stick_toward values into a short input
+step. To flee it, negate both values. Re-check object-dependent or conditional goals after short
+bursts of at most 45 frames and set continue_after_execution=true. Set it false for ordinary
+one-shot commands or when the goal is complete. Explain the current evidence in observation.
 """
+
+MAX_CONTROL_CYCLES = 6
 
 
 def parse_args() -> argparse.Namespace:
@@ -102,7 +118,14 @@ def read_state(path: Path) -> dict:
         return {"available": False}
 
 
-def request_plan(client: OpenAI, model: str, command: str, state: dict) -> ControlPlan:
+def request_plan(
+    client: OpenAI,
+    model: str,
+    command: str,
+    state: dict,
+    cycle: int,
+    history: list[str],
+) -> ControlPlan:
     response = client.responses.parse(
         model=model,
         input=[
@@ -111,7 +134,9 @@ def request_plan(client: OpenAI, model: str, command: str, state: dict) -> Contr
                 "role": "user",
                 "content": (
                     f"Current game state:\n{json.dumps(state, indent=2)}\n\n"
-                    f"Player instruction:\n{command}"
+                    f"Player instruction:\n{command}\n\n"
+                    f"Control cycle: {cycle} of {MAX_CONTROL_CYCLES}\n"
+                    f"Previous cycle results:\n{json.dumps(history, indent=2)}"
                 ),
             },
         ],
@@ -173,33 +198,54 @@ def main() -> int:
             print_status(args.status_file, args.state_file)
             continue
 
-        before_state = read_state(args.state_file)
-        write_packet(args.command_file, build_status_packet("THINKING"))
+        history: list[str] = []
         try:
-            plan = request_plan(client, args.model, command, before_state)
-            packet = build_plan_packet(plan.steps)
-            total_frames = sum(step.frames for step in plan.steps)
-            print(f"Mario understood: {plan.interpretation}")
-            for index, step in enumerate(plan.steps, 1):
-                print(f"  {index}. {step.intent} ({step.frames} frames)")
-                if step.type == "say":
-                    print(f"     Mario says: {step.text}")
-            print(f"Queued {len(plan.steps)} steps ({total_frames} frames).")
+            for cycle in range(1, MAX_CONTROL_CYCLES + 1):
+                before_state = read_state(args.state_file)
+                write_packet(args.command_file, build_status_packet("THINKING"))
+                plan = request_plan(
+                    client, args.model, command, before_state, cycle, history
+                )
+                packet = build_plan_packet(plan.steps)
+                total_frames = sum(step.frames for step in plan.steps)
 
-            previous_status_mtime = status_mtime(args.status_file)
-            write_packet(args.command_file, packet)
-            result = wait_for_completion(
-                args.status_file,
-                previous_status_mtime,
-                timeout_seconds=max(8.0, total_frames / 30.0 + 5.0),
-            )
-            if result == "COMPLETE":
-                time.sleep(0.1)
-                print(f"Result: {summarize_result(before_state, read_state(args.state_file))}.")
-            elif result == "ERROR":
-                print("The game rejected the command packet.", file=sys.stderr)
-            else:
-                print("Timed out waiting for the game; use /status to inspect it.", file=sys.stderr)
+                print(f"Mario understood: {plan.interpretation}")
+                print(f"Observed: {plan.observation}")
+                for index, step in enumerate(plan.steps, 1):
+                    print(f"  {index}. {step.intent} ({step.frames} frames)")
+                    if step.type == "say":
+                        print(f"     Mario says: {step.text}")
+                print(f"Queued {len(plan.steps)} steps ({total_frames} frames).")
+
+                previous_status_mtime = status_mtime(args.status_file)
+                write_packet(args.command_file, packet)
+                result = wait_for_completion(
+                    args.status_file,
+                    previous_status_mtime,
+                    timeout_seconds=max(8.0, total_frames / 30.0 + 5.0),
+                )
+                if result == "ERROR":
+                    print("The game rejected the command packet.", file=sys.stderr)
+                    break
+                if result != "COMPLETE":
+                    print("Timed out waiting for the game; use /status to inspect it.", file=sys.stderr)
+                    break
+
+                completion_mtime = status_mtime(args.status_file)
+                wait_for_fresh_state(args.state_file, completion_mtime)
+                result_summary = summarize_result(
+                    before_state, read_state(args.state_file)
+                )
+                print(f"Result: {result_summary}.")
+                history.append(
+                    f"Cycle {cycle}: {plan.observation}; {result_summary}"
+                )
+                if not plan.continue_after_execution:
+                    break
+                if cycle == MAX_CONTROL_CYCLES:
+                    print("Stopped after the six-cycle safety limit.")
+                else:
+                    print("Re-observing before the next move...")
         except Exception as exc:
             write_packet(args.command_file, build_status_packet("ERROR"))
             print(f"Command failed: {exc}", file=sys.stderr)

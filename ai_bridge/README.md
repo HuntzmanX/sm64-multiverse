@@ -54,9 +54,25 @@ Try instructions such as:
 
 The bridge prints the model's interpretation and each intended step, waits for
 the game to finish the sequence, then reports measured movement, height, and
-health changes. A `say` step currently appears in the companion console and
-becomes a neutral pause in-game. Its structured action is ready to drive an
-in-game text box or TTS in a later phase without changing the model contract.
+health changes. A `say` step is displayed in-game with SM64's native dialog
+font and a translucent text panel. Speech must be the first step of a plan and
+temporarily gives Mario neutral input while it is displayed.
+
+Telemetry includes up to 12 nearby recognised objects within 4000 world units,
+sorted nearest first. Coins, stars, doors, Bob-omb Buddies, and a starter set of
+common enemies are identified. Each object includes a distance, threat flag,
+world position, and camera-relative `stick_toward` hint.
+
+For goals that depend on changing object positions, the companion can run up to
+six short observe-act cycles. It refreshes telemetry between cycles and lets the
+model decide whether the instruction is complete or needs another movement
+burst. The fixed cycle cap prevents an unclear command from running forever.
+
+Examples after entering a course with recognised objects nearby:
+
+- `Run toward the nearest red coin.`
+- `Approach the red coin, but if a Goomba gets within 700 units, run away from it.`
+- `Say "That Goomba looks suspicious!", then back away from the nearest Goomba.`
 
 Interactive bridge commands:
 

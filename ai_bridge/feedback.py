@@ -41,6 +41,22 @@ def wait_for_completion(
     return "TIMEOUT"
 
 
+def wait_for_fresh_state(
+    path: Path,
+    after_mtime: int | None,
+    timeout_seconds: float = 1.0,
+    poll_seconds: float = 0.05,
+) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        current_mtime = status_mtime(path)
+        if current_mtime is not None and (
+            after_mtime is None or current_mtime > after_mtime
+        ):
+            return
+        time.sleep(poll_seconds)
+
+
 def summarize_result(before: dict, after: dict) -> str:
     before_position = before.get("position")
     after_position = after.get("position")

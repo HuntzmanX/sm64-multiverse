@@ -5,6 +5,7 @@
 #include "sm64.h"
 #include "gfx_dimensions.h"
 #include "behavior_data.h"
+#include "ai_bridge.h"
 #include "game_init.h"
 #include "object_list_processor.h"
 #include "engine/surface_load.h"
@@ -383,6 +384,7 @@ void render_game(void) {
         gDPSetScissor(gDisplayListHead++, G_SC_NON_INTERLACE, 0, BORDER_HEIGHT, SCREEN_WIDTH,
                       SCREEN_HEIGHT - BORDER_HEIGHT);
         gMenuOptSelectIndex = render_menus_and_dialogs();
+        ai_bridge_render_dialogue();
         if (gMenuOptSelectIndex != MENU_OPT_NONE) {
             gSaveOptSelectIndex = gMenuOptSelectIndex;
         }

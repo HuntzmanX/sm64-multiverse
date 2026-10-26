@@ -39,7 +39,14 @@ class ProtocolTests(unittest.TestCase):
 
     def test_say_becomes_a_neutral_timed_step(self) -> None:
         packet = build_plan_packet([Step("say", 45, text="Let's-a go!")])
-        self.assertEqual(packet, "SM64AI1\nWAIT 45\nEND\n")
+        self.assertEqual(
+            packet,
+            "SM64AI1\nSAY 45 4C657427732D6120676F21\nEND\n",
+        )
+
+    def test_say_must_be_first(self) -> None:
+        with self.assertRaises(ValueError):
+            build_plan_packet([Step("wait", 1), Step("say", 45, text="Hello")])
 
     def test_total_duration_is_limited(self) -> None:
         with self.assertRaises(ValueError):

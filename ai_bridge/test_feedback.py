@@ -4,7 +4,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from feedback import read_status, summarize_result, wait_for_completion
+from feedback import (
+    read_status,
+    summarize_result,
+    wait_for_completion,
+    wait_for_fresh_state,
+)
 
 
 class FeedbackTests(unittest.TestCase):
@@ -27,6 +32,12 @@ class FeedbackTests(unittest.TestCase):
             summarize_result(before, after),
             "moved 5 units, height +2, health -256",
         )
+
+    def test_wait_for_fresh_state_accepts_an_existing_newer_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "state"
+            path.write_text("{}", encoding="utf-8")
+            wait_for_fresh_state(path, None, 0.1, 0.001)
 
 
 if __name__ == "__main__":
