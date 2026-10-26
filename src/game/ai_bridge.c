@@ -268,6 +268,8 @@ static s32 ai_bridge_load_packet(void) {
     s32 sawEnd = FALSE;
     s32 valid = TRUE;
     s32 sayCount = 0;
+    s32 referenceYaw = 0;
+    s32 sawReferenceYaw = FALSE;
     s32 i;
     FILE *file = fopen(path, "r");
 
@@ -292,7 +294,13 @@ static s32 ai_bridge_load_packet(void) {
             break;
         }
 
-        if (sscanf(line, "INPUT %d %d %d %d", &stickX, &stickY, &buttons, &frames) == 4) {
+        if (sscanf(line, "REFERENCE_YAW %d", &referenceYaw) == 1) {
+            if (sawReferenceYaw || stepCount != 0 || referenceYaw < -32768 || referenceYaw > 32767) {
+                valid = FALSE;
+                break;
+            }
+            sawReferenceYaw = TRUE;
+        } else if (sscanf(line, "INPUT %d %d %d %d", &stickX, &stickY, &buttons, &frames) == 4) {
             if (stepCount >= AI_BRIDGE_MAX_PACKET_STEPS || stickX < -80 || stickX > 80
                 || stickY < -80 || stickY > 80 || frames < 1 || frames > AI_BRIDGE_MAX_STEP_FRAMES
                 || buttons < 0 || (buttons & ~AI_BRIDGE_ALLOWED_BUTTONS) != 0
@@ -362,6 +370,10 @@ static s32 ai_bridge_load_packet(void) {
     if (stepCount == 0) {
         ai_bridge_set_status(packetStatus);
         return TRUE;
+    }
+
+    if (sawReferenceYaw) {
+        ai_controller_set_reference_yaw((s16) referenceYaw);
     }
 
     for (i = 0; i < stepCount; i++) {

@@ -36,8 +36,14 @@ def encode_buttons(buttons: Iterable[str]) -> int:
     return mask
 
 
-def build_plan_packet(steps: Iterable[StepLike]) -> str:
+def build_plan_packet(
+    steps: Iterable[StepLike], reference_camera_yaw: int | None = None
+) -> str:
     lines = ["SM64AI1"]
+    if reference_camera_yaw is not None:
+        if not -32768 <= reference_camera_yaw <= 32767:
+            raise ValueError("Reference camera yaw must fit in a signed 16-bit value")
+        lines.append(f"REFERENCE_YAW {reference_camera_yaw}")
     total_frames = 0
     step_count = 0
 

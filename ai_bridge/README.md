@@ -63,7 +63,9 @@ The player is now Mario's camera operator while queued AI inputs control Mario:
 
 AI stick sequences retain the world-space direction they had when movement
 began. Rotating the spectator camera while Mario is running therefore changes
-the view without steering him off course. Start remains the emergency cancel
+the view without steering him off course. Object-directed plans also carry the
+camera yaw from their telemetry snapshot, so moving the camera while the model
+is thinking cannot corrupt their direction. Start remains the emergency cancel
 for an executing sequence.
 
 Try instructions such as:

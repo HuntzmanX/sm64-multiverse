@@ -265,7 +265,11 @@ def main() -> int:
                 plan = request_plan(
                     client, args.model, command, before_state, cycle, history
                 )
-                packet = build_plan_packet(plan.steps)
+                camera_yaw = before_state.get("camera_yaw")
+                packet = build_plan_packet(
+                    plan.steps,
+                    reference_camera_yaw=(camera_yaw if isinstance(camera_yaw, int) else None),
+                )
                 total_frames = sum(step.frames for step in plan.steps)
 
                 print(f"Mario understood: {plan.interpretation}")

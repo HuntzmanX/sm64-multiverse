@@ -17,6 +17,9 @@
  */
 s32 ai_controller_enqueue(s8 stickX, s8 stickY, u16 buttons, u16 frames);
 
+/** Anchor queued camera-relative stick values to the telemetry snapshot yaw. */
+void ai_controller_set_reference_yaw(s16 yaw);
+
 /** Stop playback immediately and discard every queued input step. */
 void ai_controller_clear(void);
 

@@ -37,6 +37,15 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_plan_packet([Step("wait", 10, stick_y=80)])
 
+    def test_plan_can_lock_to_snapshot_camera_yaw(self) -> None:
+        packet = build_plan_packet(
+            [Step("input", 10, stick_x=80)], reference_camera_yaw=-12345
+        )
+        self.assertEqual(
+            packet,
+            "SM64AI1\nREFERENCE_YAW -12345\nINPUT 80 0 0 10\nEND\n",
+        )
+
     def test_say_becomes_a_neutral_timed_step(self) -> None:
         packet = build_plan_packet([Step("say", 45, text="Let's-a go!")])
         self.assertEqual(

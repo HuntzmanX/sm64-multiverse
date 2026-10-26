@@ -43,6 +43,11 @@ s32 ai_controller_enqueue(s8 stickX, s8 stickY, u16 buttons, u16 frames) {
     return TRUE;
 }
 
+void ai_controller_set_reference_yaw(s16 yaw) {
+    sReferenceCameraYaw = yaw;
+    sHasReferenceYaw = TRUE;
+}
+
 void ai_controller_clear(void) {
     sQueueHead = 0;
     sQueueTail = 0;
