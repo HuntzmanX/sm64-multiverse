@@ -15,10 +15,12 @@
 #define AI_FREECAM_PITCH_SPEED 0x180
 #define AI_FREECAM_MOUSE_SPEED 0x20
 #define AI_FREECAM_FOCUS_DISTANCE 1000.0f
+#define AI_FREECAM_MARIO_FOCUS_HEIGHT 100.0f
 #define AI_FREECAM_MAX_PITCH 0x3800
 
 static s32 sEnabled = TRUE;
 static s32 sInitialized;
+static s32 sFocusMode;
 static struct Camera *sLastCamera;
 static Vec3f sPosition;
 static s16 sViewYaw;
@@ -38,15 +40,22 @@ static void ai_freecam_initialize(struct Camera *camera) {
 
 void ai_freecam_update(struct Camera *camera) {
     Vec3f focus;
+    f32 focusDistance = AI_FREECAM_FOCUS_DISTANCE;
     s32 forward;
     s32 right;
     s32 vertical;
+    s32 lookYaw;
+    s32 lookPitch;
+    s32 mouseX;
+    s32 mouseY;
     s16 cameraYaw;
 
     if (ai_input_take_freecam_toggle()) {
         sEnabled = !sEnabled;
+        if (!sEnabled) sFocusMode = FALSE;
         sInitialized = FALSE;
     }
+    if (ai_input_take_focus_toggle() && sEnabled) sFocusMode = !sFocusMode;
     if (!sEnabled || camera == NULL || camera->cutscene != 0 || sCurrPlayMode != 0) {
         ai_input_take_mouse_x();
         ai_input_take_mouse_y();
@@ -58,12 +67,22 @@ void ai_freecam_update(struct Camera *camera) {
     forward = ai_input_move_forward();
     right = ai_input_move_right();
     vertical = ai_input_move_vertical();
-    sViewYaw += ai_input_look_yaw() * AI_FREECAM_YAW_SPEED
-              - ai_input_take_mouse_x() * AI_FREECAM_MOUSE_SPEED;
-    sViewPitch += ai_input_look_pitch() * AI_FREECAM_PITCH_SPEED
-                - ai_input_take_mouse_y() * AI_FREECAM_MOUSE_SPEED;
-    if (sViewPitch > AI_FREECAM_MAX_PITCH) sViewPitch = AI_FREECAM_MAX_PITCH;
-    if (sViewPitch < -AI_FREECAM_MAX_PITCH) sViewPitch = -AI_FREECAM_MAX_PITCH;
+    lookYaw = ai_input_look_yaw();
+    lookPitch = ai_input_look_pitch();
+    mouseX = ai_input_take_mouse_x();
+    mouseY = ai_input_take_mouse_y();
+    if (sFocusMode && gMarioState != NULL) {
+        vec3f_set(focus, gMarioState->pos[0],
+                  gMarioState->pos[1] + AI_FREECAM_MARIO_FOCUS_HEIGHT,
+                  gMarioState->pos[2]);
+        sViewYaw = calculate_yaw(sPosition, focus);
+        sViewPitch = calculate_pitch(sPosition, focus);
+    } else {
+        sViewYaw += lookYaw * AI_FREECAM_YAW_SPEED - mouseX * AI_FREECAM_MOUSE_SPEED;
+        sViewPitch += lookPitch * AI_FREECAM_PITCH_SPEED - mouseY * AI_FREECAM_MOUSE_SPEED;
+        if (sViewPitch > AI_FREECAM_MAX_PITCH) sViewPitch = AI_FREECAM_MAX_PITCH;
+        if (sViewPitch < -AI_FREECAM_MAX_PITCH) sViewPitch = -AI_FREECAM_MAX_PITCH;
+    }
 
     // W/S follows the full view vector, including pitch. A/D remains a level
     // strafe, while Q/E supplies explicit world-vertical movement.
@@ -72,7 +91,14 @@ void ai_freecam_update(struct Camera *camera) {
     sPosition[1] += (forward * sins(sViewPitch) + vertical) * AI_FREECAM_MOVE_SPEED;
     sPosition[2] += (forward * coss(sViewPitch) * coss(sViewYaw)
                     - right * sins(sViewYaw)) * AI_FREECAM_MOVE_SPEED;
-    vec3f_set_dist_and_angle(sPosition, focus, AI_FREECAM_FOCUS_DISTANCE, sViewPitch, sViewYaw);
+    if (sFocusMode && gMarioState != NULL) {
+        vec3f_set(focus, gMarioState->pos[0],
+                  gMarioState->pos[1] + AI_FREECAM_MARIO_FOCUS_HEIGHT,
+                  gMarioState->pos[2]);
+        vec3f_get_dist_and_angle(sPosition, focus, &focusDistance, &sViewPitch, &sViewYaw);
+    } else {
+        vec3f_set_dist_and_angle(sPosition, focus, focusDistance, sViewPitch, sViewYaw);
+    }
     cameraYaw = sViewYaw + 0x8000;
 
     vec3f_copy(camera->pos, sPosition);
@@ -89,7 +115,7 @@ void ai_freecam_update(struct Camera *camera) {
     gLakituState.nextYaw = cameraYaw;
     gLakituState.oldYaw = cameraYaw;
     gLakituState.oldPitch = sViewPitch;
-    gLakituState.focusDistance = AI_FREECAM_FOCUS_DISTANCE;
+    gLakituState.focusDistance = focusDistance;
 }
 
 #else

@@ -56,6 +56,9 @@ The player is now Mario's camera operator while queued AI inputs control Mario:
   **arrow keys** provide the same control without a mouse.
 - **F1** toggles the spectator camera so vanilla camera testing is still
   available.
+- **F** toggles focus mode while freecam is active. The camera position stays
+  fixed, but its view continuously rotates to keep Mario centred. Camera
+  movement remains available while manual look controls are temporarily ignored.
 - **Tab** toggles the in-game command box, while **T** opens it without acting
   as a close shortcut once you are typing. Type an instruction and press
   **Enter** to send it to the running bridge. **Escape** or **Tab** closes the

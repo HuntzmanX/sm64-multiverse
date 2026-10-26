@@ -28,6 +28,7 @@
 #define KEY_E         0x12
 #define KEY_T         0x14
 #define KEY_ENTER     0x1C
+#define KEY_F         0x21
 #define KEY_LEFTSHIFT 0x2A
 #define KEY_RIGHTSHIFT 0x36
 #define KEY_F1        0x3B
@@ -39,6 +40,7 @@
 static s32 sTyping;
 static s32 sShiftDown;
 static s32 sFreecamToggle;
+static s32 sFocusToggle;
 static s32 sKeys[0x200];
 static char sText[AI_INPUT_MAX_LENGTH + 1];
 static s32 sTextLength;
@@ -157,6 +159,10 @@ s32 ai_input_on_key_down(s32 key) {
         sFreecamToggle = TRUE;
         return TRUE;
     }
+    if (!sTyping && key == KEY_F && !wasDown && ai_freecam_is_enabled()) {
+        sFocusToggle = TRUE;
+        return TRUE;
+    }
     if (sTyping) {
         if (key == KEY_ESCAPE || (key == KEY_TAB && !wasDown)) {
             sTyping = FALSE;
@@ -183,7 +189,7 @@ s32 ai_input_on_key_up(s32 key) {
     if (key == KEY_LEFTSHIFT || key == KEY_RIGHTSHIFT) {
         sShiftDown = sKeys[KEY_LEFTSHIFT] || sKeys[KEY_RIGHTSHIFT];
     }
-    return sTyping || key == KEY_TAB || key == KEY_T || key == KEY_F1
+    return sTyping || key == KEY_TAB || key == KEY_T || key == KEY_F || key == KEY_F1
         || (ai_freecam_is_enabled()
             && (key == KEY_Q || key == 0x11 || key == KEY_E
                 || key == 0x1E || key == 0x1F || key == 0x20
@@ -248,6 +254,12 @@ s32 ai_input_take_freecam_toggle(void) {
     return toggle;
 }
 
+s32 ai_input_take_focus_toggle(void) {
+    s32 toggle = sFocusToggle;
+    sFocusToggle = FALSE;
+    return toggle;
+}
+
 void ai_input_add_mouse_delta(s32 x, s32 y) {
     if (!sTyping && sMouseLook) {
         sMouseX += x;
@@ -307,6 +319,7 @@ s32 ai_input_look_yaw(void) { return 0; }
 s32 ai_input_look_pitch(void) { return 0; }
 s32 ai_input_is_typing(void) { return FALSE; }
 s32 ai_input_take_freecam_toggle(void) { return FALSE; }
+s32 ai_input_take_focus_toggle(void) { return FALSE; }
 void ai_input_add_mouse_delta(UNUSED s32 x, UNUSED s32 y) {}
 void ai_input_set_mouse_look(UNUSED s32 active) {}
 s32 ai_input_take_mouse_x(void) { return 0; }

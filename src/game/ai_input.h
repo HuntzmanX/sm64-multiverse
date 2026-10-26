@@ -20,6 +20,7 @@ s32 ai_input_look_yaw(void);
 s32 ai_input_look_pitch(void);
 s32 ai_input_is_typing(void);
 s32 ai_input_take_freecam_toggle(void);
+s32 ai_input_take_focus_toggle(void);
 void ai_input_add_mouse_delta(s32 x, s32 y);
 void ai_input_set_mouse_look(s32 active);
 s32 ai_input_take_mouse_x(void);
