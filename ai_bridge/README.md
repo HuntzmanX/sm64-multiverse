@@ -94,11 +94,13 @@ stationary for several frames, so chained commands do not wait out a stale
 frame budget. Explicit waits and button inputs always retain their requested
 duration. A `say` step is displayed in-game with SM64's native dialog
 font and a translucent text panel. Speech must be the first step of a plan and
-temporarily gives Mario neutral input while it is displayed.
+temporarily gives Mario neutral input while it is displayed. Mario may now add
+one short in-character reaction to notable, dangerous, funny, confusing, or
+personally directed requests. Routine movement stays quiet, and spontaneous
+speech is limited to the first control cycle so retries do not repeat the line.
 
-A compact HUD-font label reports `AI READY`, `AI THINKING`, `AI ACTING`,
-`AI DONE`, `AI ERROR`, or `AI CANCELLED`. It uses fixed uppercase strings to
-keep the PC texture path as simple as the original working ready indicator.
+A compact custom icon reports ready, thinking, acting, error, or cancelled at
+the top-left of the HUD. The completed state temporarily reuses the ready icon.
 Mario's normal standing idle animations remain enabled, but the final transition
 into sleep is suppressed so a delayed command is not spent waking him and the
 camera FOV does not zoom while the model is thinking.
