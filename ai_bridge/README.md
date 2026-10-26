@@ -50,8 +50,8 @@ With the built game still running from the repository root, run:
 The player is now Mario's camera operator while queued AI inputs control Mario:
 
 - **WASD** moves the spectator camera across the level.
-- **Mouse** rotates and tilts the camera; the **arrow keys** provide the same
-  control without a mouse.
+- Hold **left click** and move the **mouse** to rotate and tilt the camera; the
+  **arrow keys** provide the same control without a mouse.
 - **F1** toggles the spectator camera so vanilla camera testing is still
   available.
 - **Tab** opens the in-game command box. Type an instruction and press

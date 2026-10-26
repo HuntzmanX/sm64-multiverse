@@ -252,6 +252,12 @@ static LRESULT CALLBACK gfx_dxgi_wnd_proc(HWND h_wnd, UINT message, WPARAM w_par
                                 sizeof(RAWINPUTHEADER)) == size
                 && raw.header.dwType == RIM_TYPEMOUSE
                 && !(raw.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE)) {
+                if (raw.data.mouse.usButtonFlags & RI_MOUSE_LEFT_BUTTON_DOWN) {
+                    ai_input_set_mouse_look(TRUE);
+                }
+                if (raw.data.mouse.usButtonFlags & RI_MOUSE_LEFT_BUTTON_UP) {
+                    ai_input_set_mouse_look(FALSE);
+                }
                 ai_input_add_mouse_delta(raw.data.mouse.lLastX, raw.data.mouse.lLastY);
             }
             break;

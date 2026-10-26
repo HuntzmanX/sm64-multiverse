@@ -259,6 +259,12 @@ static void gfx_sdl_handle_events(void) {
             case SDL_MOUSEMOTION:
                 ai_input_add_mouse_delta(event.motion.xrel, event.motion.yrel);
                 break;
+            case SDL_MOUSEBUTTONDOWN:
+                if (event.button.button == SDL_BUTTON_LEFT) ai_input_set_mouse_look(TRUE);
+                break;
+            case SDL_MOUSEBUTTONUP:
+                if (event.button.button == SDL_BUTTON_LEFT) ai_input_set_mouse_look(FALSE);
+                break;
 #endif
             case SDL_WINDOWEVENT:
                 if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {

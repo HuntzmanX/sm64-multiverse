@@ -41,6 +41,7 @@ static s32 sTextLength;
 static s32 sSentTimer;
 static s32 sMouseX;
 static s32 sMouseY;
+static s32 sMouseLook;
 static s8 sPhysicalStickX;
 static s8 sPhysicalStickY;
 static u16 sPhysicalButtons;
@@ -139,6 +140,7 @@ s32 ai_input_on_key_down(s32 key) {
         sTyping = TRUE;
         sTextLength = 0;
         sText[0] = '\0';
+        sMouseLook = FALSE;
         sMouseX = 0;
         sMouseY = 0;
         return TRUE;
@@ -181,6 +183,9 @@ s32 ai_input_on_key_up(s32 key) {
 void ai_input_on_all_keys_up(void) {
     memset(sKeys, 0, sizeof(sKeys));
     sShiftDown = FALSE;
+    sMouseLook = FALSE;
+    sMouseX = 0;
+    sMouseY = 0;
 }
 
 void ai_input_capture_physical_pad(OSContPad *pad) {
@@ -229,9 +234,17 @@ s32 ai_input_take_freecam_toggle(void) {
 }
 
 void ai_input_add_mouse_delta(s32 x, s32 y) {
-    if (!sTyping) {
+    if (!sTyping && sMouseLook) {
         sMouseX += x;
         sMouseY += y;
+    }
+}
+
+void ai_input_set_mouse_look(s32 active) {
+    sMouseLook = active && !sTyping;
+    if (!sMouseLook) {
+        sMouseX = 0;
+        sMouseY = 0;
     }
 }
 
@@ -276,6 +289,7 @@ s32 ai_input_look_pitch(void) { return 0; }
 s32 ai_input_is_typing(void) { return FALSE; }
 s32 ai_input_take_freecam_toggle(void) { return FALSE; }
 void ai_input_add_mouse_delta(UNUSED s32 x, UNUSED s32 y) {}
+void ai_input_set_mouse_look(UNUSED s32 active) {}
 s32 ai_input_take_mouse_x(void) { return 0; }
 s32 ai_input_take_mouse_y(void) { return 0; }
 void ai_input_render(void) {}
