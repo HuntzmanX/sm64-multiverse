@@ -462,6 +462,13 @@ static s32 ai_bridge_load_packet(void) {
         return TRUE;
     }
 
+    // A cancelled OpenAI request can finish just after the player replaces it.
+    // Discard that stale plan until the replacement request first announces a
+    // new THINKING state.
+    if (sStatus == AI_BRIDGE_CANCELLED) {
+        return TRUE;
+    }
+
     ai_controller_begin_plan();
     if (sawReferenceYaw) {
         ai_controller_set_reference_yaw((s16) referenceYaw);
@@ -647,6 +654,17 @@ void ai_bridge_update(void) {
     sWasActive = ai_controller_is_active();
 }
 
+s32 ai_bridge_has_pending_instruction(void) {
+    return sStatus == AI_BRIDGE_THINKING || sStatus == AI_BRIDGE_EXECUTING
+        || sStatus == AI_BRIDGE_COMPLETE;
+}
+
+void ai_bridge_cancel_current(void) {
+    ai_controller_clear();
+    sDialogueTimer = 0;
+    ai_bridge_set_status(AI_BRIDGE_CANCELLED);
+}
+
 void ai_bridge_render_status(void) {
     const char *text;
 
@@ -695,6 +713,13 @@ void ai_bridge_render_dialogue(void) {
 #else
 
 void ai_bridge_update(void) {
+}
+
+s32 ai_bridge_has_pending_instruction(void) {
+    return FALSE;
+}
+
+void ai_bridge_cancel_current(void) {
 }
 
 void ai_bridge_render_status(void) {

@@ -63,6 +63,11 @@ The player is now Mario's camera operator while queued AI inputs control Mario:
   as a close shortcut once you are typing. Type an instruction and press
   **Enter** to send it to the running bridge. **Escape** or **Tab** closes the
   box without sending. The panel and text wrapping adapt to widescreen windows.
+- If Enter is pressed while an instruction is still thinking, acting, or within
+  its brief done window, the game asks before replacing it. Press **Enter** again
+  to cancel the old instruction and send the new one, **Escape** to keep editing,
+  or **Tab** to close the command box. Late plans from the cancelled request are
+  rejected so Mario cannot resume an obsolete instruction.
 - While the command box is open, gameplay shortcuts are suppressed. Outside
   it, **Escape** also acts as Start/pause.
 

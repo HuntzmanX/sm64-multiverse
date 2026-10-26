@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "dialog_ids.h"
+#include "ai_bridge.h"
 #include "ai_freecam.h"
 #include "game_init.h"
 #include "gfx_dimensions.h"
@@ -41,6 +42,7 @@ static s32 sTyping;
 static s32 sShiftDown;
 static s32 sFreecamToggle;
 static s32 sFocusToggle;
+static s32 sReplaceConfirmation;
 static s32 sKeys[0x200];
 static char sText[AI_INPUT_MAX_LENGTH + 1];
 static s32 sTextLength;
@@ -95,6 +97,7 @@ static u8 ai_input_dialog_char(char c) {
 
 static void ai_input_build_display(void) {
     const char *prefix = sSentTimer > 0 ? "SENT: " : "MARIO> ";
+    const char *confirmation = "COMMAND RUNNING! ENTER: REPLACE  ESC: EDIT  TAB: CLOSE";
     s32 maxColumns = (s32) ((GFX_DIMENSIONS_FROM_RIGHT_EDGE(16.0f)
                            - GFX_DIMENSIONS_FROM_LEFT_EDGE(16.0f)) / 8.0f);
     s32 output = 0;
@@ -102,6 +105,19 @@ static void ai_input_build_display(void) {
     s32 i;
 
     if (maxColumns < 12) maxColumns = 12;
+
+    if (sReplaceConfirmation) {
+        for (i = 0; confirmation[i] != '\0' && output < AI_INPUT_ENCODED_LENGTH - 1; i++) {
+            if (column >= maxColumns) {
+                sDisplayText[output++] = DIALOG_CHAR_NEWLINE;
+                column = 0;
+            }
+            sDisplayText[output++] = ai_input_dialog_char(confirmation[i]);
+            column++;
+        }
+        sDisplayText[output] = DIALOG_CHAR_TERMINATOR;
+        return;
+    }
 
     for (i = 0; prefix[i] != '\0' && output < AI_INPUT_ENCODED_LENGTH - 1; i++) {
         sDisplayText[output++] = ai_input_dialog_char(prefix[i]);
@@ -136,6 +152,7 @@ static void ai_input_submit(void) {
     remove(path);
     rename(temporaryPath, path);
     sSentTimer = 60;
+    sReplaceConfirmation = FALSE;
     sTyping = FALSE;
 }
 
@@ -150,6 +167,7 @@ s32 ai_input_on_key_down(s32 key) {
         sTyping = TRUE;
         sTextLength = 0;
         sText[0] = '\0';
+        sReplaceConfirmation = FALSE;
         sMouseLook = FALSE;
         sMouseX = 0;
         sMouseY = 0;
@@ -164,10 +182,24 @@ s32 ai_input_on_key_down(s32 key) {
         return TRUE;
     }
     if (sTyping) {
-        if (key == KEY_ESCAPE || (key == KEY_TAB && !wasDown)) {
+        if (sReplaceConfirmation) {
+            if (key == KEY_ENTER) {
+                ai_bridge_cancel_current();
+                ai_input_submit();
+            } else if (key == KEY_ESCAPE) {
+                sReplaceConfirmation = FALSE;
+            } else if (key == KEY_TAB && !wasDown) {
+                sReplaceConfirmation = FALSE;
+                sTyping = FALSE;
+            }
+        } else if (key == KEY_ESCAPE || (key == KEY_TAB && !wasDown)) {
             sTyping = FALSE;
         } else if (key == KEY_ENTER) {
-            ai_input_submit();
+            if (sTextLength > 0 && ai_bridge_has_pending_instruction()) {
+                sReplaceConfirmation = TRUE;
+            } else {
+                ai_input_submit();
+            }
         } else if (key == KEY_BACKSPACE && sTextLength > 0) {
             sText[--sTextLength] = '\0';
         } else if ((c = ai_input_scancode_char(key, sShiftDown)) != '\0'

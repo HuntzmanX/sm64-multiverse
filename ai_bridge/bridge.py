@@ -294,6 +294,12 @@ def main() -> int:
                 plan = request_plan(
                     client, args.model, command, before_state, cycle, history
                 )
+                if (
+                    read_status(args.status_file) == "CANCELLED"
+                    and args.request_file.is_file()
+                ):
+                    print("Instruction replaced before its next action was sent.")
+                    break
                 camera_yaw = before_state.get("camera_yaw")
                 packet = build_plan_packet(
                     plan.steps,
@@ -316,6 +322,12 @@ def main() -> int:
 
                 previous_status_mtime = status_mtime(args.status_file)
                 write_packet(args.command_file, packet)
+                if (
+                    read_status(args.status_file) == "CANCELLED"
+                    and args.request_file.is_file()
+                ):
+                    print("Instruction replaced before execution began.")
+                    break
                 result = wait_for_completion(
                     args.status_file,
                     previous_status_mtime,
@@ -325,7 +337,7 @@ def main() -> int:
                     print("The game rejected the command packet.", file=sys.stderr)
                     break
                 if result == "CANCELLED":
-                    print("Instruction cancelled with Start.")
+                    print("Instruction cancelled or replaced.")
                     break
                 if result != "COMPLETE":
                     print("Timed out waiting for the game; use /status to inspect it.", file=sys.stderr)
