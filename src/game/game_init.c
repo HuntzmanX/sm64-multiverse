@@ -3,6 +3,7 @@
 #include "sm64.h"
 #include "gfx_dimensions.h"
 #include "audio/external.h"
+#include "ai_controller.h"
 #include "buffers/buffers.h"
 #include "buffers/gfx_output_buffer.h"
 #include "buffers/framebuffers.h"
@@ -559,6 +560,13 @@ void read_controller_inputs(void) {
 #endif
     }
     run_demo_inputs();
+
+    // AI commands use the same OSContPad path as physical input. This keeps
+    // Mario's movement code vanilla and makes queued commands indistinguishable
+    // from ordinary controller input to the rest of the game.
+    if (gControllers[0].controllerData != NULL) {
+        ai_controller_update(gControllers[0].controllerData);
+    }
 
     for (i = 0; i < 2; i++) {
         struct Controller *controller = &gControllers[i];
