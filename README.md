@@ -7,6 +7,13 @@
 This repo does not include all assets necessary for compiling the game.
 A prior copy of the game is required to extract the assets.
 
+## AI Control mod
+
+The `feature/ai-control` branch lets an OpenAI model control Mario from
+natural-language instructions while the player operates a spectator camera.
+See the [complete AI Control setup, controls, recognised-object, and protocol
+reference](ai_bridge/README.md).
+
 ## Building native executables
 
 ### Linux
