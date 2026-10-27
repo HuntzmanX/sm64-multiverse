@@ -135,6 +135,17 @@ objects that are absent from the current state snapshot.
 Every wait step must use stick_x=0, stick_y=0, and an empty buttons list. Never exceed 900 total
 frames. Common controls: A jumps, B punches or dives, Z crouches, and the C buttons adjust camera.
 
+The frames on a step containing A are the number of frames Mario HOLDS the jump button. Jump
+height is variable: releasing A during ascent deliberately cuts the jump short. Use a 1-2 frame A
+tap only for an intentional tiny hop or a UI/dialog press. For an ordinary useful jump, hold A for
+6-10 frames; for the highest practical jump, hold A for 10-15 frames. Always follow it with a step
+that releases A. For a moving jump, keep the intended stick direction on both the A-held step and
+the following released step so Mario continues travelling through the air; normally allow another
+15-30 frames of stick movement after releasing A. Unless the player specifically requests a small
+hop, prefer a full useful jump over a one-frame tap when clearing terrain, reaching an object, or
+recovering from a stuck route. Double and triple jumps require separate presses timed around each
+landing rather than one continuous A hold.
+
 The state includes dialog.active and dialog.id for native sign and NPC text boxes. When the player's goal is
 to read a sign or talk to an NPC, approach the listed object, press and release B to begin the interaction,
 and set continue_after_execution=true so the dialog can be observed. Prefer saving Mario's spontaneous

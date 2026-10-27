@@ -288,6 +288,20 @@ Button presses must be followed by a release step. The model can combine stick
 and buttons to attempt dives, long jumps, backflips, wall kicks, and other
 standard moves; these are not separate scripted commands.
 
+The duration of an A-button step controls how long Mario holds jump. Releasing
+A early cuts his upward movement short, so the planner distinguishes between:
+
+| Jump intention | Typical A hold | Follow-through |
+|---|---:|---|
+| Tiny hop or dialog/UI press | 1-2 frames | Release immediately. |
+| Normal useful jump | 6-10 frames | Release A; retain the movement stick as needed. |
+| Highest practical jump | 10-15 frames | Release A; retain the movement stick for 15-30 frames in a moving jump. |
+
+Moving jumps keep the same stick direction during the A hold and after the
+release. A one-frame jump is therefore used deliberately, not as the default
+way to clear terrain or reach an object. Double and triple jumps use separate
+presses timed around Mario's landings.
+
 ## Recognised objects
 
 Telemetry includes the nearest 20 recognised active objects within 8000 world
