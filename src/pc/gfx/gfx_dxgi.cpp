@@ -245,6 +245,14 @@ static LRESULT CALLBACK gfx_dxgi_wnd_proc(HWND h_wnd, UINT message, WPARAM w_par
         case WM_KEYUP:
             onkeyup(w_param, l_param);
             break;
+        case WM_MOUSEMOVE: {
+            RECT client_rect;
+            GetClientRect(h_wnd, &client_rect);
+            ai_input_set_mouse_position((short) LOWORD(l_param), (short) HIWORD(l_param),
+                                        client_rect.right - client_rect.left,
+                                        client_rect.bottom - client_rect.top);
+            break;
+        }
         case WM_INPUT: {
             RAWINPUT raw;
             UINT size = sizeof(raw);
@@ -257,6 +265,9 @@ static LRESULT CALLBACK gfx_dxgi_wnd_proc(HWND h_wnd, UINT message, WPARAM w_par
                 }
                 if (raw.data.mouse.usButtonFlags & RI_MOUSE_LEFT_BUTTON_UP) {
                     ai_input_set_mouse_look(FALSE);
+                }
+                if (raw.data.mouse.usButtonFlags & RI_MOUSE_WHEEL) {
+                    ai_input_add_mouse_wheel((SHORT) raw.data.mouse.usButtonData);
                 }
                 ai_input_add_mouse_delta(raw.data.mouse.lLastX, raw.data.mouse.lLastY);
             }

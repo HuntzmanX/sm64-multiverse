@@ -258,6 +258,11 @@ static void gfx_sdl_handle_events(void) {
                 break;
             case SDL_MOUSEMOTION:
                 ai_input_add_mouse_delta(event.motion.xrel, event.motion.yrel);
+                ai_input_set_mouse_position(event.motion.x, event.motion.y,
+                                            window_width, window_height);
+                break;
+            case SDL_MOUSEWHEEL:
+                ai_input_add_mouse_wheel(event.wheel.y);
                 break;
             case SDL_MOUSEBUTTONDOWN:
                 if (event.button.button == SDL_BUTTON_LEFT) ai_input_set_mouse_look(TRUE);

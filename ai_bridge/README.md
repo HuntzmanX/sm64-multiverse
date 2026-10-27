@@ -25,6 +25,7 @@ runs inside the game process.
 - [Mario speech and personality](#mario-speech-and-personality)
 - [Telemetry](#telemetry)
 - [Status icons](#status-icons)
+- [Widescreen action sidebar](#widescreen-action-sidebar)
 - [Companion terminal commands](#companion-terminal-commands)
 - [Configuration](#configuration)
 - [Local protocol reference](#local-protocol-reference)
@@ -45,6 +46,8 @@ runs inside the game process.
 - Native-looking Mario speech, reactive personality, and post-dialog remarks.
 - Automated sign and NPC dialog advancement.
 - Free, Focus, Follow, and First-Person spectator camera modes.
+- Native mouse file selection plus wheel-and-click control for list and carousel menus.
+- A toggleable 16:9 action sidebar backed by Mario's real controller queue.
 - Custom HUD icons for Ready, Thinking, Acting, Error, and Cancelled.
 - Mario's final sleep transition is disabled so an instruction is not wasted
   waking him and the idle camera does not alter its FOV.
@@ -158,6 +161,7 @@ Mario cannot suddenly resume an obsolete plan.
 | Physical C buttons | Alternative spectator look. |
 | `F` | Cycle Free -> Focus -> Follow -> First-Person. |
 | `F1` | Toggle the spectator camera and return to/from vanilla camera. |
+| `F2` | Show or hide the widescreen action-queue sidebar. |
 
 | Camera mode | Behaviour | HUD glyph |
 |---|---|---|
@@ -176,10 +180,16 @@ perform Mario's actions. Keyboard and mouse remain available for UI control:
 
 | Input | UI behaviour |
 |---|---|
-| `Enter` or left click | Confirm, select, or advance native dialog (A). |
+| Mouse movement | Directly moves the vanilla hand cursor on the file-select screens. |
+| Mouse wheel | Move to the previous/next item in list and carousel menus. |
+| Left click | Confirm, select, or advance native dialog (A). |
+| `Enter` | Keyboard confirm, select, or advance native dialog (A). |
 | `Escape` | Back/dialog cancel (B), pause where appropriate, or emergency-cancel active AI input. |
 | Arrow keys | Navigate menus with the virtual stick. |
 | Physical Start | Emergency-cancel an executing AI sequence. |
+
+Moving the keyboard arrows or a physical stick hands the file-select cursor back
+to that device. Moving the mouse again immediately restores direct mouse control.
 
 ## Natural-language commands
 
@@ -489,6 +499,24 @@ to make room.
 | Complete | Ready icon | Finished; returns to Ready after about two seconds. |
 | Error | `assets/ai-error.png` | API failure or rejected packet. |
 | Cancelled | `assets/ai-cancelled.png` | Instruction cancelled or replaced. |
+
+## Widescreen action sidebar
+
+On displays wider than 3:2, a translucent panel uses the right side of the
+16:9 frame to show the live action queue. Press `F2` to toggle it.
+
+- `PLANNING...` appears while the companion is waiting for a model response.
+- `QUEUE EMPTY` appears when no controller steps remain.
+- The yellow row beginning with `!` is Mario's currently executing step.
+- Grey rows are the steps still waiting in the native controller ring buffer.
+- Manual inputs are summarised as `FORWARD`, `BACK`, `LEFT`, or `RIGHT`, with
+  held buttons appended (`A`, `B`, `Z`, `R`, `CU`, `CD`, `CL`, `CR`).
+- Live object movement names the recognised target, such as `TO RED COIN` or
+  `FLEE GOOMBA`; if it has disappeared, the sidebar falls back to its stable ID.
+- Neutral steps are shown as `WAIT`; active custom speech is shown as `SAY`.
+
+The panel reads the same queue that drives Mario, rather than maintaining a
+separate visual copy, so completed and aborted actions disappear immediately.
 
 ## Companion terminal commands
 

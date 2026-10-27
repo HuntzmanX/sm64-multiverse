@@ -35,6 +35,7 @@
 #define KEY_LEFTSHIFT 0x2A
 #define KEY_RIGHTSHIFT 0x36
 #define KEY_F1        0x3B
+#define KEY_F2        0x3C
 #define KEY_UP        0x148
 #define KEY_LEFT      0x14B
 #define KEY_RIGHT     0x14D
@@ -44,6 +45,7 @@ static s32 sTyping;
 static s32 sShiftDown;
 static s32 sFreecamToggle;
 static s32 sFocusToggle;
+static s32 sSidebarVisible = TRUE;
 static s32 sReplaceConfirmation;
 static s32 sKeys[0x200];
 static char sText[AI_INPUT_MAX_LENGTH + 1];
@@ -54,6 +56,10 @@ static s32 sMouseY;
 static s32 sUiConfirmDown;
 static s32 sUiBackDown;
 static s32 sMousePrimaryDown;
+static s32 sMouseWheel;
+static s32 sMenuMouseActive;
+static f32 sMenuMouseX;
+static f32 sMenuMouseY;
 static s8 sPhysicalStickX;
 static s8 sPhysicalStickY;
 static u16 sPhysicalButtons;
@@ -184,6 +190,10 @@ s32 ai_input_on_key_down(s32 key) {
         sFreecamToggle = TRUE;
         return TRUE;
     }
+    if (!sTyping && key == KEY_F2 && !wasDown) {
+        sSidebarVisible = !sSidebarVisible;
+        return TRUE;
+    }
     if (!sTyping && key == KEY_F && !wasDown && ai_freecam_is_enabled()) {
         sFocusToggle = TRUE;
         return TRUE;
@@ -225,6 +235,10 @@ s32 ai_input_on_key_down(s32 key) {
         return TRUE;
     }
 
+    if (key == KEY_UP || key == KEY_DOWN || key == KEY_LEFT || key == KEY_RIGHT) {
+        sMenuMouseActive = FALSE;
+    }
+
     return ai_freecam_is_enabled()
         && (key == KEY_Q || key == 0x11 || key == KEY_E
             || key == 0x1E || key == 0x1F || key == 0x20
@@ -239,7 +253,7 @@ s32 ai_input_on_key_up(s32 key) {
         sShiftDown = sKeys[KEY_LEFTSHIFT] || sKeys[KEY_RIGHTSHIFT];
     }
     return sTyping || key == KEY_ESCAPE || key == KEY_ENTER
-        || key == KEY_TAB || key == KEY_T || key == KEY_F || key == KEY_F1
+        || key == KEY_TAB || key == KEY_T || key == KEY_F || key == KEY_F1 || key == KEY_F2
         || (ai_freecam_is_enabled()
             && (key == KEY_Q || key == 0x11 || key == KEY_E
                 || key == 0x1E || key == 0x1F || key == 0x20
@@ -252,6 +266,7 @@ void ai_input_on_all_keys_up(void) {
     sUiConfirmDown = FALSE;
     sUiBackDown = FALSE;
     sMousePrimaryDown = FALSE;
+    sMouseWheel = 0;
     sMouseX = 0;
     sMouseY = 0;
 }
@@ -263,6 +278,9 @@ void ai_input_capture_physical_pad(OSContPad *pad) {
     sPhysicalStickX = pad->stick_x;
     sPhysicalStickY = pad->stick_y;
     sPhysicalButtons = pad->button;
+    if (ABS(sPhysicalStickX) > 30 || ABS(sPhysicalStickY) > 30) {
+        sMenuMouseActive = FALSE;
+    }
     if (sTyping) {
         pad->stick_x = 0;
         pad->stick_y = 0;
@@ -282,6 +300,13 @@ void ai_input_capture_physical_pad(OSContPad *pad) {
         if (uiActive) {
             pad->stick_x = (sKeys[KEY_RIGHT] - sKeys[KEY_LEFT]) * 80;
             pad->stick_y = (sKeys[KEY_UP] - sKeys[KEY_DOWN]) * 80;
+            if (sMouseWheel != 0) {
+                // Wheel down means next: down in lists and right in carousels.
+                pad->stick_x = sMouseWheel < 0 ? 80 : -80;
+                pad->stick_y = sMouseWheel < 0 ? -80 : 80;
+                pad->button |= sMouseWheel < 0 ? D_JPAD : U_JPAD;
+                sMouseWheel = 0;
+            }
             if (sUiConfirmDown || sMousePrimaryDown) pad->button |= A_BUTTON;
             if (sUiBackDown) {
                 pad->button |= sCurrPlayMode != 0 ? START_BUTTON : B_BUTTON;
@@ -343,6 +368,31 @@ void ai_input_set_mouse_look(s32 active) {
     sMousePrimaryDown = active;
 }
 
+void ai_input_set_mouse_position(s32 x, s32 y, s32 width, s32 height) {
+    f32 logicalWidth;
+
+    if (width <= 0 || height <= 0) return;
+    logicalWidth = SCREEN_HEIGHT * ((f32) width / (f32) height);
+    sMenuMouseX = ((f32) x / (f32) width) * logicalWidth - logicalWidth * 0.5f;
+    sMenuMouseY = SCREEN_HEIGHT * 0.5f - ((f32) y / (f32) height) * SCREEN_HEIGHT;
+    sMenuMouseActive = TRUE;
+}
+
+void ai_input_add_mouse_wheel(s32 direction) {
+    if (direction != 0) sMouseWheel = direction > 0 ? 1 : -1;
+}
+
+s32 ai_input_get_menu_mouse(f32 *x, f32 *y) {
+    if (!sMenuMouseActive || x == NULL || y == NULL) return FALSE;
+    *x = sMenuMouseX;
+    *y = sMenuMouseY;
+    return TRUE;
+}
+
+s32 ai_input_sidebar_is_visible(void) {
+    return sSidebarVisible;
+}
+
 s32 ai_input_take_mouse_x(void) {
     s32 value = sMouseX;
     sMouseX = 0;
@@ -390,6 +440,11 @@ s32 ai_input_take_freecam_toggle(void) { return FALSE; }
 s32 ai_input_take_focus_toggle(void) { return FALSE; }
 void ai_input_add_mouse_delta(UNUSED s32 x, UNUSED s32 y) {}
 void ai_input_set_mouse_look(UNUSED s32 active) {}
+void ai_input_set_mouse_position(UNUSED s32 x, UNUSED s32 y, UNUSED s32 width,
+                                 UNUSED s32 height) {}
+void ai_input_add_mouse_wheel(UNUSED s32 direction) {}
+s32 ai_input_get_menu_mouse(UNUSED f32 *x, UNUSED f32 *y) { return FALSE; }
+s32 ai_input_sidebar_is_visible(void) { return FALSE; }
 s32 ai_input_take_mouse_x(void) { return 0; }
 s32 ai_input_take_mouse_y(void) { return 0; }
 void ai_input_render(void) {}

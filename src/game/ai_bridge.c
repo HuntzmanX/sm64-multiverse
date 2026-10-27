@@ -4,6 +4,7 @@
 #include "ai_bridge.h"
 #include "ai_controller.h"
 #include "ai_freecam.h"
+#include "ai_input.h"
 
 #ifndef TARGET_N64
 
@@ -40,6 +41,9 @@
 #define AI_BRIDGE_OBJECT_RADIUS 8000.0f
 #define AI_BRIDGE_DIALOG_ASCII_LENGTH 80
 #define AI_BRIDGE_DIALOG_ENCODED_LENGTH 96
+#define AI_BRIDGE_SIDEBAR_STEPS 7
+#define AI_BRIDGE_SIDEBAR_WIDTH 118.0f
+#define AI_BRIDGE_SIDEBAR_COLUMNS 18
 #define AI_BRIDGE_ALLOWED_BUTTONS \
     (A_BUTTON | B_BUTTON | Z_TRIG | R_TRIG | U_CBUTTONS | D_CBUTTONS | L_CBUTTONS | R_CBUTTONS)
 
@@ -255,6 +259,135 @@ static u8 ai_bridge_dialog_char(char c) {
         case '?': return 0xF4;
         default: return DIALOG_CHAR_SPACE;
     }
+}
+
+static void ai_bridge_encode_hud_text(const char *text, u8 *encoded, s32 capacity) {
+    s32 i;
+
+    for (i = 0; text[i] != '\0' && i < capacity - 1
+                && i < AI_BRIDGE_SIDEBAR_COLUMNS; i++) {
+        encoded[i] = ai_bridge_dialog_char(text[i]);
+    }
+    encoded[i] = DIALOG_CHAR_TERMINATOR;
+}
+
+static void ai_bridge_append_button_names(char *text, s32 capacity, u16 buttons) {
+    static const struct {
+        u16 mask;
+        const char *name;
+    } names[] = {
+        { A_BUTTON, " A" }, { B_BUTTON, " B" }, { Z_TRIG, " Z" }, { R_TRIG, " R" },
+        { U_CBUTTONS, " CU" }, { D_CBUTTONS, " CD" },
+        { L_CBUTTONS, " CL" }, { R_CBUTTONS, " CR" },
+    };
+    s32 i;
+
+    for (i = 0; i < (s32) (sizeof(names) / sizeof(names[0])); i++) {
+        if (buttons & names[i].mask) {
+            s32 length = strlen(text);
+            if (length < capacity - 1) {
+                strncat(text, names[i].name, capacity - length - 1);
+            }
+        }
+    }
+}
+
+static void ai_bridge_describe_step(const struct AiControllerDisplayStep *step,
+                                    s32 current, char *text, s32 capacity) {
+    const char *prefix = current ? "! " : "  ";
+
+    if (step->type == AI_CONTROLLER_DISPLAY_TARGET) {
+        struct Object *object = ai_controller_object_from_id(step->targetId);
+        s32 threat;
+        const char *type = object != NULL ? ai_bridge_object_type(object, &threat) : NULL;
+        s32 output;
+        s32 i;
+
+        output = snprintf(text, capacity, "%s%s ", prefix,
+                          step->targetDirection > 0 ? "TO" : "FLEE");
+        if (type == NULL) {
+            snprintf(&text[output], capacity - output, "ID %d", step->targetId);
+        } else {
+            for (i = 0; type[i] != '\0' && output < capacity - 1; i++) {
+                char c = type[i] == '_' ? ' ' : type[i];
+                text[output++] = c >= 'a' && c <= 'z' ? c - ('a' - 'A') : c;
+            }
+            text[output] = '\0';
+        }
+        ai_bridge_append_button_names(text, capacity, step->buttons);
+        return;
+    }
+
+    if (step->stickX == 0 && step->stickY == 0) {
+        if (step->buttons == 0) {
+            snprintf(text, capacity, "%s%s", prefix,
+                     current && ai_bridge_is_speaking() ? "SAY" : "WAIT");
+        } else {
+            snprintf(text, capacity, "%sPRESS", prefix);
+            ai_bridge_append_button_names(text, capacity, step->buttons);
+        }
+        return;
+    }
+
+    if (step->stickY > 20) {
+        snprintf(text, capacity, "%sFORWARD", prefix);
+    } else if (step->stickY < -20) {
+        snprintf(text, capacity, "%sBACK", prefix);
+    } else if (step->stickX < 0) {
+        snprintf(text, capacity, "%sLEFT", prefix);
+    } else {
+        snprintf(text, capacity, "%sRIGHT", prefix);
+    }
+    ai_bridge_append_button_names(text, capacity, step->buttons);
+}
+
+static void ai_bridge_render_sidebar(void) {
+    struct AiControllerDisplayStep steps[AI_BRIDGE_SIDEBAR_STEPS];
+    u8 encoded[32];
+    char text[32];
+    s32 count;
+    s32 i;
+    s32 right;
+    s32 left;
+    s32 y;
+
+    if (!ai_input_sidebar_is_visible() || GFX_DIMENSIONS_ASPECT_RATIO < 1.5f) return;
+
+    right = GFX_DIMENSIONS_RECT_FROM_RIGHT_EDGE(6);
+    left = right - (s32) AI_BRIDGE_SIDEBAR_WIDTH;
+    create_dl_translation_matrix(MENU_MTX_PUSH, left, 195.0f, 0.0f);
+    create_dl_scale_matrix(MENU_MTX_NOPUSH, AI_BRIDGE_SIDEBAR_WIDTH / 130.0f, 1.7f, 1.0f);
+    gDPSetEnvColor(gDisplayListHead++, 0, 0, 0, 155);
+    gSPDisplayList(gDisplayListHead++, dl_draw_text_bg_box);
+    gSPPopMatrix(gDisplayListHead++, G_MTX_MODELVIEW);
+
+    gSPDisplayList(gDisplayListHead++, dl_ia_text_begin);
+    gDPSetEnvColor(gDisplayListHead++, 255, 220, 70, 255);
+    ai_bridge_encode_hud_text("ACTION QUEUE", encoded, sizeof(encoded));
+    print_generic_string(left + 7, 180, encoded);
+
+    count = ai_controller_get_display_steps(steps, AI_BRIDGE_SIDEBAR_STEPS);
+    y = 162;
+    if (count == 0) {
+        const char *emptyText = sStatus == AI_BRIDGE_THINKING ? "PLANNING..." : "QUEUE EMPTY";
+        gDPSetEnvColor(gDisplayListHead++, 210, 210, 210, 255);
+        ai_bridge_encode_hud_text(emptyText, encoded, sizeof(encoded));
+        print_generic_string(left + 7, y, encoded);
+    } else {
+        for (i = 0; i < count; i++) {
+            ai_bridge_describe_step(&steps[i], i == 0, text, sizeof(text));
+            gDPSetEnvColor(gDisplayListHead++, i == 0 ? 255 : 190,
+                          i == 0 ? 220 : 190, i == 0 ? 70 : 190, 255);
+            ai_bridge_encode_hud_text(text, encoded, sizeof(encoded));
+            print_generic_string(left + 7, y, encoded);
+            y -= 14;
+        }
+    }
+
+    gDPSetEnvColor(gDisplayListHead++, 135, 135, 135, 255);
+    ai_bridge_encode_hud_text("F2 HIDE", encoded, sizeof(encoded));
+    print_generic_string(left + 7, 62, encoded);
+    gSPDisplayList(gDisplayListHead++, dl_ia_text_end);
 }
 
 static void ai_bridge_show_dialogue(const char *text, s32 frames) {
@@ -720,6 +853,7 @@ void ai_bridge_render_status(void) {
     gSPDisplayList(gDisplayListHead++, dl_hud_img_begin);
     render_hud_tex_lut(x, SCREEN_HEIGHT - HUD_TOP_Y - 16, texture);
     gSPDisplayList(gDisplayListHead++, dl_hud_img_end);
+    ai_bridge_render_sidebar();
 }
 
 void ai_bridge_render_dialogue(void) {

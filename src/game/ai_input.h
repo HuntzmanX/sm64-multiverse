@@ -23,6 +23,10 @@ s32 ai_input_take_freecam_toggle(void);
 s32 ai_input_take_focus_toggle(void);
 void ai_input_add_mouse_delta(s32 x, s32 y);
 void ai_input_set_mouse_look(s32 active);
+void ai_input_set_mouse_position(s32 x, s32 y, s32 width, s32 height);
+void ai_input_add_mouse_wheel(s32 direction);
+s32 ai_input_get_menu_mouse(f32 *x, f32 *y);
+s32 ai_input_sidebar_is_visible(void);
 s32 ai_input_take_mouse_x(void);
 s32 ai_input_take_mouse_y(void);
 

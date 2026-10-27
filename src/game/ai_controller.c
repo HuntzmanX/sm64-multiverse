@@ -97,7 +97,7 @@ s16 ai_controller_object_id(struct Object *object) {
 #endif
 }
 
-static struct Object *ai_controller_object_from_id(s16 objectId) {
+struct Object *ai_controller_object_from_id(s16 objectId) {
     if (objectId < 1 || objectId > OBJECT_POOL_CAPACITY) return NULL;
 #ifdef USE_SYSTEM_MALLOC
     return sObjectRegistry[objectId - 1];
@@ -181,6 +181,34 @@ s32 ai_controller_take_cancelled(void) {
 
 u32 ai_controller_queued_steps(void) {
     return sQueueCount;
+}
+
+static void ai_controller_copy_display_step(struct AiControllerDisplayStep *display,
+                                            const struct AiControllerStep *step,
+                                            u16 frames) {
+    display->type = step->type;
+    display->stickX = step->stickX;
+    display->stickY = step->stickY;
+    display->targetId = step->targetId;
+    display->targetDirection = step->targetDirection;
+    display->targetSpeed = step->targetSpeed;
+    display->buttons = step->buttons;
+    display->frames = frames;
+}
+
+s32 ai_controller_get_display_steps(struct AiControllerDisplayStep *steps, s32 capacity) {
+    s32 count = 0;
+    u32 queueIndex;
+
+    if (steps == NULL || capacity <= 0) return 0;
+    if (sFramesRemaining != 0) {
+        ai_controller_copy_display_step(&steps[count++], &sCurrentStep, sFramesRemaining);
+    }
+    for (queueIndex = 0; queueIndex < sQueueCount && count < capacity; queueIndex++) {
+        u32 index = (sQueueHead + queueIndex) % AI_CONTROLLER_QUEUE_CAPACITY;
+        ai_controller_copy_display_step(&steps[count++], &sQueue[index], sQueue[index].frames);
+    }
+    return count;
 }
 
 const char *ai_controller_target_result_text(void) {

@@ -5,8 +5,21 @@
 #include <PR/ultratypes.h>
 
 #define AI_CONTROLLER_QUEUE_CAPACITY 64
+#define AI_CONTROLLER_DISPLAY_INPUT 0
+#define AI_CONTROLLER_DISPLAY_TARGET 1
 
 struct Object;
+
+struct AiControllerDisplayStep {
+    s8 type;
+    s8 stickX;
+    s8 stickY;
+    s16 targetId;
+    s8 targetDirection;
+    u8 targetSpeed;
+    u16 buttons;
+    u16 frames;
+};
 
 /**
  * Add one controller state to the end of the AI input queue.
@@ -26,6 +39,9 @@ s32 ai_controller_enqueue_target(s16 targetId, s8 direction, u8 speed, u16 butto
 /** Return a stable, protocol-safe ID for a live object. */
 s16 ai_controller_object_id(struct Object *object);
 
+/** Resolve a stable ID for HUD display; the result may no longer be active. */
+struct Object *ai_controller_object_from_id(s16 objectId);
+
 /** Anchor queued camera-relative stick values to the telemetry snapshot yaw. */
 void ai_controller_set_reference_yaw(s16 yaw);
 
@@ -43,6 +59,9 @@ s32 ai_controller_take_cancelled(void);
 
 /** Returns the number of steps waiting after the currently playing step. */
 u32 ai_controller_queued_steps(void);
+
+/** Copy the active step followed by queued steps for the widescreen HUD. */
+s32 ai_controller_get_display_steps(struct AiControllerDisplayStep *steps, s32 capacity);
 
 /** Human-readable result of the most recent tracked target step. */
 const char *ai_controller_target_result_text(void);

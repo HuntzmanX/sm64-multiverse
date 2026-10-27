@@ -8,6 +8,7 @@
 #include "engine/graph_node.h"
 #include "engine/math_util.h"
 #include "file_select.h"
+#include "game/ai_input.h"
 #include "game/area.h"
 #include "game/game_init.h"
 #include "game/ingame_menu.h"
@@ -1653,6 +1654,8 @@ void handle_cursor_button_input(void) {
 void handle_controller_cursor_input(void) {
     s16 rawStickX = gPlayer3Controller->rawStickX;
     s16 rawStickY = gPlayer3Controller->rawStickY;
+    f32 mouseX;
+    f32 mouseY;
 
     // Handle deadzone
     if (rawStickY > -2 && rawStickY < 2) {
@@ -1662,9 +1665,15 @@ void handle_controller_cursor_input(void) {
         rawStickX = 0;
     }
 
-    // Move cursor
-    sCursorPos[0] += rawStickX / 8;
-    sCursorPos[1] += rawStickY / 8;
+    // The PC mouse maps directly onto the vanilla hand cursor. Controller or
+    // keyboard movement takes over again until the mouse is moved next.
+    if (ai_input_get_menu_mouse(&mouseX, &mouseY)) {
+        sCursorPos[0] = mouseX;
+        sCursorPos[1] = mouseY;
+    } else {
+        sCursorPos[0] += rawStickX / 8;
+        sCursorPos[1] += rawStickY / 8;
+    }
 
     // Stop cursor from going offscreen
     if (sCursorPos[0] > 132.0f) {
