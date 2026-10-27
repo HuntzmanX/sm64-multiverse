@@ -427,8 +427,11 @@ dialog state and numeric ID, but not the displayed message text.
 ## Mario speech and personality
 
 A `say` step displays `MARIO: ...` using SM64's dialog glyphs and a translucent
-panel. It holds neutral controls and must be first in a plan. Speech is limited
-to printable ASCII and 80 characters, normally 2-12 words and 45-75 frames.
+panel. It must be first in a plan and normally holds neutral controls for only
+15-30 frames as a brief delivery beat. Mario then continues through the queued
+actions while the line remains fully visible for five seconds and fades away
+over another half-second. Speech is limited to printable ASCII, 80 characters,
+and normally 2-12 words.
 
 Mario is prompted to be upbeat, brave, friendly, eager to impress, and lightly
 theatrical, with restrained Mario-style phrasing. Explicit wording requested by

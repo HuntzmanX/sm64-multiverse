@@ -41,6 +41,8 @@
 #define AI_BRIDGE_OBJECT_RADIUS 8000.0f
 #define AI_BRIDGE_DIALOG_ASCII_LENGTH 80
 #define AI_BRIDGE_DIALOG_ENCODED_LENGTH 96
+#define AI_BRIDGE_DIALOG_HOLD_FRAMES 150
+#define AI_BRIDGE_DIALOG_FADE_FRAMES 15
 #define AI_BRIDGE_SIDEBAR_STEPS 7
 #define AI_BRIDGE_SIDEBAR_WIDTH 118.0f
 #define AI_BRIDGE_SIDEBAR_COLUMNS 18
@@ -80,6 +82,7 @@ static s32 sTelemetryTimer;
 static s32 sCompleteTimer;
 static u8 sDialogueText[AI_BRIDGE_DIALOG_ENCODED_LENGTH];
 static s32 sDialogueTimer;
+static s32 sDialogueStepTimer;
 
 ALIGNED8 static const Texture sAiReadyTexture[] = {
 #include "assets/ai-ready.rgba16.inc.c"
@@ -321,7 +324,7 @@ static void ai_bridge_describe_step(const struct AiControllerDisplayStep *step,
     if (step->stickX == 0 && step->stickY == 0) {
         if (step->buttons == 0) {
             snprintf(text, capacity, "%s%s", prefix,
-                     current && ai_bridge_is_speaking() ? "SAY" : "WAIT");
+                     current && sDialogueStepTimer > 0 ? "SAY" : "WAIT");
         } else {
             snprintf(text, capacity, "%sPRESS", prefix);
             ai_bridge_append_button_names(text, capacity, step->buttons);
@@ -410,7 +413,8 @@ static void ai_bridge_show_dialogue(const char *text, s32 frames) {
         column++;
     }
     sDialogueText[output] = DIALOG_CHAR_TERMINATOR;
-    sDialogueTimer = frames;
+    sDialogueTimer = AI_BRIDGE_DIALOG_HOLD_FRAMES + AI_BRIDGE_DIALOG_FADE_FRAMES;
+    sDialogueStepTimer = frames;
 }
 
 static const char *ai_bridge_path(const char *environmentName, const char *fallback) {
@@ -788,10 +792,14 @@ void ai_bridge_update(void) {
     if (sDialogueTimer > 0) {
         sDialogueTimer--;
     }
+    if (sDialogueStepTimer > 0) {
+        sDialogueStepTimer--;
+    }
 
     if (cancelled) {
         ai_bridge_set_status(AI_BRIDGE_CANCELLED);
         sDialogueTimer = 0;
+        sDialogueStepTimer = 0;
     } else if (sWasActive && !active && sStatus == AI_BRIDGE_EXECUTING) {
         ai_bridge_set_status(AI_BRIDGE_COMPLETE);
     } else if (active && sStatus == AI_BRIDGE_READY) {
@@ -822,6 +830,7 @@ s32 ai_bridge_has_pending_instruction(void) {
 void ai_bridge_cancel_current(void) {
     ai_controller_clear();
     sDialogueTimer = 0;
+    sDialogueStepTimer = 0;
     ai_bridge_set_status(AI_BRIDGE_CANCELLED);
 }
 
@@ -857,19 +866,24 @@ void ai_bridge_render_status(void) {
 }
 
 void ai_bridge_render_dialogue(void) {
+    s32 fadeAlpha = 255;
+
     if (sDialogueTimer <= 0 || get_dialog_id() != DIALOG_NONE) {
         return;
+    }
+    if (sDialogueTimer <= AI_BRIDGE_DIALOG_FADE_FRAMES) {
+        fadeAlpha = sDialogueTimer * 255 / AI_BRIDGE_DIALOG_FADE_FRAMES;
     }
 
     create_dl_ortho_matrix();
     create_dl_translation_matrix(MENU_MTX_PUSH, 18.0f, 72.0f, 0.0f);
     create_dl_scale_matrix(MENU_MTX_NOPUSH, 2.2f, 0.7f, 1.0f);
-    gDPSetEnvColor(gDisplayListHead++, 0, 0, 0, 170);
+    gDPSetEnvColor(gDisplayListHead++, 0, 0, 0, 170 * fadeAlpha / 255);
     gSPDisplayList(gDisplayListHead++, dl_draw_text_bg_box);
     gSPPopMatrix(gDisplayListHead++, G_MTX_MODELVIEW);
 
     gSPDisplayList(gDisplayListHead++, dl_ia_text_begin);
-    gDPSetEnvColor(gDisplayListHead++, 255, 255, 255, 255);
+    gDPSetEnvColor(gDisplayListHead++, 255, 255, 255, fadeAlpha);
     print_generic_string(28, 58, sDialogueText);
     gSPDisplayList(gDisplayListHead++, dl_ia_text_end);
 }
