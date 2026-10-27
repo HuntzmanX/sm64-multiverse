@@ -27,4 +27,7 @@ void ai_bridge_render_status(void);
 /** Render queued Mario speech with the native dialog font. */
 void ai_bridge_render_dialogue(void);
 
+/** Return TRUE while the custom Mario speech overlay is active. */
+s32 ai_bridge_is_speaking(void);
+
 #endif // AI_BRIDGE_H

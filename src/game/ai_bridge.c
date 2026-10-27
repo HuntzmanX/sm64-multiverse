@@ -653,12 +653,6 @@ void ai_bridge_update(void) {
     s32 cancelled = ai_controller_take_cancelled();
 
     if (sDialogueTimer > 0) {
-        if (gMarioState != NULL && gMarioState->marioObj != NULL
-            && ai_freecam_get_mode() != AI_CAMERA_MODE_FIRST_PERSON) {
-            s16 cameraYaw = calculate_yaw(gMarioState->pos, gLakituState.pos);
-            camera_approach_s16_symmetric_bool(&gMarioState->faceAngle[1], cameraYaw, 0x1000);
-            gMarioState->intendedYaw = gMarioState->faceAngle[1];
-        }
         sDialogueTimer--;
     }
 
@@ -746,6 +740,10 @@ void ai_bridge_render_dialogue(void) {
     gSPDisplayList(gDisplayListHead++, dl_ia_text_end);
 }
 
+s32 ai_bridge_is_speaking(void) {
+    return sDialogueTimer > 0;
+}
+
 #else
 
 void ai_bridge_update(void) {
@@ -762,6 +760,10 @@ void ai_bridge_render_status(void) {
 }
 
 void ai_bridge_render_dialogue(void) {
+}
+
+s32 ai_bridge_is_speaking(void) {
+    return FALSE;
 }
 
 #endif

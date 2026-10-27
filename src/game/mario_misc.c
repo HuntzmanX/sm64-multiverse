@@ -1,6 +1,8 @@
 #include <PR/ultratypes.h>
 
 #include "sm64.h"
+#include "ai_bridge.h"
+#include "ai_freecam.h"
 #include "area.h"
 #include "audio/external.h"
 #include "behavior_actions.h"
@@ -411,6 +413,24 @@ Gfx *geo_mario_head_rotation(s32 callContext, struct GraphNode *node, UNUSED Mat
         if (camera->mode == CAMERA_MODE_C_UP) {
             rotNode->rotation[0] = gPlayerCameraState->headRotation[1];
             rotNode->rotation[2] = gPlayerCameraState->headRotation[0];
+        } else if (ai_bridge_is_speaking()
+                   && ai_freecam_get_mode() != AI_CAMERA_MODE_FIRST_PERSON
+                   && gMarioState != NULL && gMarioState->marioObj != NULL) {
+            s16 cameraYaw = calculate_yaw(gMarioState->pos, gLakituState.pos);
+            s16 relativeYaw = cameraYaw - gMarioState->faceAngle[1];
+            s16 targetYaw = 0;
+
+            // Mario only acknowledges the camera while it is within the
+            // 160-degree field of view in front of him. This is a graphical
+            // head turn only; his movement-facing yaw remains untouched.
+            if (ABS(relativeYaw) <= DEGREES(80)) {
+                targetYaw = relativeYaw;
+            }
+
+            rotNode->rotation[0] = 0;
+            rotNode->rotation[1] = approach_s16_symmetric(rotNode->rotation[1], targetYaw,
+                                                          DEGREES(8));
+            rotNode->rotation[2] = 0;
         } else if (action & ACT_FLAG_WATER_OR_TEXT) {
             rotNode->rotation[0] = bodyState->headAngle[1];
             rotNode->rotation[1] = bodyState->headAngle[2];
