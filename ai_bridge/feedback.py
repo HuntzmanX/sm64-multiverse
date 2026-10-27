@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import math
+import re
 import time
 from pathlib import Path
+from typing import Any
 
 
 TERMINAL_STATUSES = {"COMPLETE", "ERROR", "CANCELLED"}
@@ -57,6 +59,96 @@ def wait_for_fresh_state(
         time.sleep(poll_seconds)
 
 
+def new_door_transition(before: dict, after: dict) -> dict[str, Any] | None:
+    before_transition = before.get("door_transition")
+    after_transition = after.get("door_transition")
+    if not isinstance(after_transition, dict):
+        return None
+
+    before_sequence = (
+        before_transition.get("sequence", 0)
+        if isinstance(before_transition, dict)
+        else 0
+    )
+    after_sequence = after_transition.get("sequence", 0)
+    if (
+        not isinstance(before_sequence, int)
+        or not isinstance(after_sequence, int)
+        or after_sequence <= before_sequence
+    ):
+        return None
+    return after_transition
+
+
+def remember_door_transition(memory: dict, transition: dict[str, Any]) -> None:
+    completed = memory.setdefault("completed_interactions", [])
+    if not isinstance(completed, list):
+        completed = []
+        memory["completed_interactions"] = completed
+
+    sequence = transition.get("sequence")
+    if any(
+        isinstance(item, dict)
+        and item.get("type") == "door_crossed"
+        and item.get("sequence") == sequence
+        for item in completed
+    ):
+        return
+
+    completed.append(
+        {
+            "type": "door_crossed",
+            "sequence": sequence,
+            "source_id": transition.get("source_id", 0),
+            "destination_id": transition.get("destination_id", 0),
+            "from": transition.get("from", {}),
+            "to": transition.get("to", {}),
+        }
+    )
+
+
+def completed_door_ids_for_scene(memory: dict, state: dict) -> set[int]:
+    completed = memory.get("completed_interactions")
+    if not isinstance(completed, list):
+        return set()
+
+    current_scene = (state.get("level"), state.get("area"))
+    blocked: set[int] = set()
+    for item in completed:
+        if not isinstance(item, dict) or item.get("type") != "door_crossed":
+            continue
+        destination = item.get("to")
+        if not isinstance(destination, dict):
+            continue
+        destination_scene = (destination.get("level"), destination.get("area"))
+        if destination_scene != current_scene:
+            continue
+        destination_id = item.get("destination_id")
+        if isinstance(destination_id, int) and destination_id > 0:
+            blocked.add(destination_id)
+    return blocked
+
+
+def command_allows_door_reuse(command: str) -> bool:
+    return re.search(
+        r"\b(back|return|again|twice|reverse|come back|go back|leave through)\b",
+        command,
+        flags=re.IGNORECASE,
+    ) is not None
+
+
+def repeated_door_target_ids(plan: Any, blocked_ids: set[int]) -> set[int]:
+    repeated: set[int] = set()
+    for step in getattr(plan, "steps", []):
+        if (
+            getattr(step, "type", None) == "target"
+            and getattr(step, "target_mode", None) == "toward"
+            and getattr(step, "target_id", 0) in blocked_ids
+        ):
+            repeated.add(step.target_id)
+    return repeated
+
+
 def summarize_result(before: dict, after: dict) -> str:
     before_position = before.get("position")
     after_position = after.get("position")
@@ -81,6 +173,19 @@ def summarize_result(before: dict, after: dict) -> str:
     target_result = after.get("target_result")
     if isinstance(target_result, str) and target_result not in {"", "none"}:
         parts.append(f"target {target_result.replace('_', ' ')}")
+
+    door_transition = new_door_transition(before, after)
+    if door_transition is not None:
+        source_id = door_transition.get("source_id", "?")
+        origin = door_transition.get("from")
+        destination = door_transition.get("to")
+        if isinstance(origin, dict) and isinstance(destination, dict):
+            parts.append(
+                f"crossed door #{source_id} "
+                f"(room {origin.get('room', '?')} -> {destination.get('room', '?')})"
+            )
+        else:
+            parts.append(f"crossed door #{source_id}")
 
     before_dialog = before.get("dialog")
     after_dialog = after.get("dialog")

@@ -408,6 +408,20 @@ After a plan, the bridge can report the measured result to the model and ask
 for another plan. This enables conditions and corrections, but observation
 happens between bursts rather than continuously.
 
+### Door completion memory
+
+Door animations are tracked continuously rather than inferred from Mario's
+final position. The game waits for a normal, star, or warp-door transition to
+finish before completing the current action burst, then publishes a latched
+`door_transition` event with its source and arrival-side object IDs plus the
+before/after level, area, and room.
+
+For the lifetime of the current player instruction, the companion remembers
+that crossing as a completed interaction. The arrival-side door is not targeted
+again merely because it remains the nearest recognised object. A loop guard
+rejects that repeated target and asks the model to reconsider. Instructions
+that explicitly ask Mario to go back, return, or cross again may reuse it.
+
 ## NPCs, signs, and native dialog
 
 The normal planned interaction is:
@@ -452,7 +466,7 @@ The game refreshes `.sm64-ai-state.json` about twice per second.
 
 | Field | Meaning |
 |---|---|
-| `level`, `area` | Numeric level and area IDs. |
+| `level`, `area`, `room` | Numeric level, area, and collision-room IDs. |
 | `position` | Mario's world X/Y/Z position. |
 | `velocity` | Mario's X/Y/Z velocity. |
 | `forward_speed` | Current forward velocity. |
@@ -471,6 +485,7 @@ The game refreshes `.sm64-ai-state.json` about twice per second.
 | `environment.touching_wall` | Whether Mario has a wall collision. |
 | `environment.water_level` | Current water surface height. |
 | `target_result` | Latest target outcome. |
+| `door_transition` | Latest completed door crossing: sequence, source/arrival IDs, and before/after scene. |
 | `nearby_objects` | Up to 20 recognised objects within 8000 units. |
 
 Each nearby object contains:
@@ -487,7 +502,8 @@ Each nearby object contains:
 | `stick_toward` | Legacy camera-relative hint; live plans use `target`. |
 
 Result summaries include horizontal distance moved, height change, health
-change, target outcome, and native-dialog transitions when available.
+change, target outcome, completed door crossings, and native-dialog transitions
+when available.
 
 ## Status icons
 

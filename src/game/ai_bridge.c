@@ -83,6 +83,18 @@ static s32 sCompleteTimer;
 static u8 sDialogueText[AI_BRIDGE_DIALOG_ENCODED_LENGTH];
 static s32 sDialogueTimer;
 static s32 sDialogueStepTimer;
+static s32 sDoorTransitionActive;
+static s32 sDoorTransitionWarp;
+static s32 sDoorTransitionSawSpawn;
+static u32 sDoorTransitionSequence;
+static s16 sDoorSourceId;
+static s16 sDoorDestinationId;
+static s16 sDoorFromLevel;
+static s16 sDoorFromArea;
+static s16 sDoorFromRoom;
+static s16 sDoorToLevel;
+static s16 sDoorToArea;
+static s16 sDoorToRoom;
 
 ALIGNED8 static const Texture sAiReadyTexture[] = {
 #include "assets/ai-ready.rgba16.inc.c"
@@ -106,6 +118,60 @@ ALIGNED8 static const Texture sAiCancelledTexture[] = {
 
 static s32 ai_bridge_has_behavior(struct Object *object, const BehaviorScript *behavior) {
     return object->behavior == segmented_to_virtual(behavior);
+}
+
+static s32 ai_bridge_is_door_action(u32 action) {
+    return action == ACT_PULLING_DOOR || action == ACT_PUSHING_DOOR
+        || action == ACT_ENTERING_STAR_DOOR || action == ACT_WARP_DOOR_SPAWN;
+}
+
+static void ai_bridge_finish_door_transition(void) {
+    sDoorTransitionActive = FALSE;
+    sDoorTransitionSequence++;
+    sDoorToLevel = gCurrLevelNum;
+    sDoorToArea = gCurrAreaIndex;
+    sDoorToRoom = gMarioCurrentRoom;
+}
+
+static void ai_bridge_track_door_transition(void) {
+    u32 action;
+
+    if (gMarioState == NULL || gMarioState->action == ACT_UNINITIALIZED) {
+        return;
+    }
+    action = gMarioState->action;
+
+    if (!sDoorTransitionActive && ai_bridge_is_door_action(action)) {
+        sDoorTransitionActive = TRUE;
+        sDoorTransitionWarp = (action == ACT_WARP_DOOR_SPAWN)
+            || ((action == ACT_PULLING_DOOR || action == ACT_PUSHING_DOOR)
+                && (gMarioState->actionArg & 4));
+        sDoorTransitionSawSpawn = action == ACT_WARP_DOOR_SPAWN;
+        sDoorSourceId = gMarioState->usedObj != NULL
+            ? ai_controller_object_id(gMarioState->usedObj) : 0;
+        sDoorDestinationId = sDoorSourceId;
+        sDoorFromLevel = gCurrLevelNum;
+        sDoorFromArea = gCurrAreaIndex;
+        sDoorFromRoom = gMarioCurrentRoom;
+    }
+
+    if (!sDoorTransitionActive) {
+        return;
+    }
+
+    if (action == ACT_WARP_DOOR_SPAWN) {
+        sDoorTransitionWarp = TRUE;
+        sDoorTransitionSawSpawn = TRUE;
+        if (gMarioState->usedObj != NULL) {
+            sDoorDestinationId = ai_controller_object_id(gMarioState->usedObj);
+        }
+    }
+
+    if ((!sDoorTransitionWarp && !ai_bridge_is_door_action(action))
+        || (sDoorTransitionWarp && sDoorTransitionSawSpawn
+            && action != ACT_WARP_DOOR_SPAWN)) {
+        ai_bridge_finish_door_transition();
+    }
 }
 
 static const char *ai_bridge_exclamation_box_type(s32 contents) {
@@ -728,6 +794,7 @@ static void ai_bridge_write_telemetry(void) {
             "{\n"
             "  \"level\": %d,\n"
             "  \"area\": %d,\n"
+            "  \"room\": %d,\n"
             "  \"position\": {\"x\": %.2f, \"y\": %.2f, \"z\": %.2f},\n"
             "  \"velocity\": {\"x\": %.2f, \"y\": %.2f, \"z\": %.2f},\n"
             "  \"forward_speed\": %.2f,\n"
@@ -743,8 +810,11 @@ static void ai_bridge_write_telemetry(void) {
             "\"floor_type\": %d, \"floor_normal_y\": %.3f, \"touching_wall\": %s, "
             "\"water_level\": %d},\n"
             "  \"target_result\": \"%s\",\n"
+            "  \"door_transition\": {\"sequence\": %u, \"source_id\": %d, "
+            "\"destination_id\": %d, \"from\": {\"level\": %d, \"area\": %d, \"room\": %d}, "
+            "\"to\": {\"level\": %d, \"area\": %d, \"room\": %d}},\n"
             "  \"nearby_objects\": [\n",
-            gCurrLevelNum, gCurrAreaIndex,
+            gCurrLevelNum, gCurrAreaIndex, gMarioCurrentRoom,
             gMarioState->pos[0], gMarioState->pos[1], gMarioState->pos[2],
             gMarioState->vel[0], gMarioState->vel[1], gMarioState->vel[2],
             gMarioState->forwardVel, gMarioState->faceAngle[1], cameraYaw, gMarioState->action,
@@ -755,7 +825,10 @@ static void ai_bridge_write_telemetry(void) {
             gMarioState->floorHeight, gMarioState->pos[1] - gMarioState->floorHeight,
             floorType, floorNormalY, gMarioState->wall != NULL ? "true" : "false",
             gMarioState->waterLevel,
-            ai_controller_target_result_text());
+            ai_controller_target_result_text(),
+            sDoorTransitionSequence, sDoorSourceId, sDoorDestinationId,
+            sDoorFromLevel, sDoorFromArea, sDoorFromRoom,
+            sDoorToLevel, sDoorToArea, sDoorToRoom);
     for (i = 0; i < nearbyCount; i++) {
         struct Object *object = nearby[i].object;
         s32 objectId = ai_controller_object_id(object);
@@ -786,8 +859,11 @@ static void ai_bridge_write_telemetry(void) {
 }
 
 void ai_bridge_update(void) {
-    s32 active = ai_controller_is_active();
+    s32 active;
     s32 cancelled = ai_controller_take_cancelled();
+
+    ai_bridge_track_door_transition();
+    active = ai_controller_is_active() || sDoorTransitionActive;
 
     if (sDialogueTimer > 0) {
         sDialogueTimer--;
@@ -819,7 +895,7 @@ void ai_bridge_update(void) {
         ai_bridge_write_telemetry();
     }
 
-    sWasActive = ai_controller_is_active();
+    sWasActive = ai_controller_is_active() || sDoorTransitionActive;
 }
 
 s32 ai_bridge_has_pending_instruction(void) {

@@ -14,7 +14,12 @@ from openai import OpenAI
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from feedback import (
+    command_allows_door_reuse,
+    completed_door_ids_for_scene,
+    new_door_transition,
     read_status,
+    remember_door_transition,
+    repeated_door_target_ids,
     status_mtime,
     summarize_result,
     wait_for_completion,
@@ -156,6 +161,13 @@ the same target step: try a short jump-assisted target step only when the height
 or report that the direct route is blocked. To interact, first use a target step, then use a brief
 released button press: B for a breakable box, A to jump onto a tree/pole, or the appropriate ordinary
 control once within range. Explain the current evidence in observation.
+
+The state may also include instruction_memory.completed_interactions. A door_crossed entry is
+authoritative evidence that Mario already passed through that door during this player instruction.
+If the instruction was simply to enter or pass through it, the goal is complete: do not approach,
+touch, or cross the arrival-side door again, even though it remains nearby. Only reuse a completed
+door when the original player instruction explicitly asks Mario to return, go back, or cross it
+again. Continue with any genuinely later part of the instruction from the new room or area.
 """
 
 MAX_CONTROL_CYCLES = 8
@@ -323,12 +335,16 @@ def main() -> int:
             continue
 
         history: list[str] = []
+        instruction_memory: dict = {"completed_interactions": [], "blocked_repeats": []}
+        door_loop_rejections = 0
         try:
             for cycle in range(1, MAX_CONTROL_CYCLES + 1):
                 before_state = read_state(args.state_file)
+                planning_state = dict(before_state)
+                planning_state["instruction_memory"] = instruction_memory
                 write_packet(args.command_file, build_status_packet("THINKING"))
                 plan = request_plan(
-                    client, args.model, command, before_state, cycle, history
+                    client, args.model, command, planning_state, cycle, history
                 )
                 if (
                     read_status(args.status_file) == "CANCELLED"
@@ -336,6 +352,30 @@ def main() -> int:
                 ):
                     print("Instruction replaced before its next action was sent.")
                     break
+
+                blocked_door_ids = completed_door_ids_for_scene(
+                    instruction_memory, before_state
+                )
+                repeated_door_ids = repeated_door_target_ids(plan, blocked_door_ids)
+                if repeated_door_ids and not command_allows_door_reuse(command):
+                    door_loop_rejections += 1
+                    repeated_text = ", ".join(
+                        f"#{object_id}" for object_id in sorted(repeated_door_ids)
+                    )
+                    message = (
+                        f"Rejected repeated arrival-side door target {repeated_text}; "
+                        "that crossing already succeeded"
+                    )
+                    print(f"Loop guard: {message}. Re-observing...")
+                    history.append(f"Cycle {cycle}: {message}")
+                    instruction_memory["blocked_repeats"].append(
+                        {"cycle": cycle, "door_ids": sorted(repeated_door_ids)}
+                    )
+                    write_packet(args.command_file, build_status_packet("READY"))
+                    if door_loop_rejections >= 2:
+                        print("Stopped this instruction before Mario could loop again.")
+                        break
+                    continue
                 camera_yaw = before_state.get("camera_yaw")
                 packet = build_plan_packet(
                     plan.steps,
@@ -381,9 +421,11 @@ def main() -> int:
 
                 completion_mtime = status_mtime(args.status_file)
                 wait_for_fresh_state(args.state_file, completion_mtime)
-                result_summary = summarize_result(
-                    before_state, read_state(args.state_file)
-                )
+                after_state = read_state(args.state_file)
+                result_summary = summarize_result(before_state, after_state)
+                door_transition = new_door_transition(before_state, after_state)
+                if door_transition is not None:
+                    remember_door_transition(instruction_memory, door_transition)
                 print(f"Result: {result_summary}.")
                 history.append(
                     f"Cycle {cycle}: {plan.observation}; {result_summary}"
@@ -391,7 +433,7 @@ def main() -> int:
                 if not plan.continue_after_execution:
                     break
                 if cycle == MAX_CONTROL_CYCLES:
-                    print("Stopped after the six-cycle safety limit.")
+                    print(f"Stopped after the {MAX_CONTROL_CYCLES}-cycle safety limit.")
                 else:
                     print("Re-observing before the next move...")
         except Exception as exc:

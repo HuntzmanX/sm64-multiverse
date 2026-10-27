@@ -5,11 +5,28 @@ import unittest
 from pathlib import Path
 
 from feedback import (
+    command_allows_door_reuse,
+    completed_door_ids_for_scene,
+    new_door_transition,
     read_status,
+    remember_door_transition,
+    repeated_door_target_ids,
     summarize_result,
     wait_for_completion,
     wait_for_fresh_state,
 )
+
+
+class FakeStep:
+    def __init__(self, target_id: int) -> None:
+        self.type = "target"
+        self.target_mode = "toward"
+        self.target_id = target_id
+
+
+class FakePlan:
+    def __init__(self, *target_ids: int) -> None:
+        self.steps = [FakeStep(target_id) for target_id in target_ids]
 
 
 class FeedbackTests(unittest.TestCase):
@@ -60,6 +77,54 @@ class FeedbackTests(unittest.TestCase):
         )
         self.assertIn("dialog opened (id 3)", opened)
         self.assertIn("dialog closed", closed)
+
+    def test_new_door_transition_requires_a_new_sequence(self) -> None:
+        before = {"door_transition": {"sequence": 3}}
+        transition = {
+            "sequence": 4,
+            "source_id": 17,
+            "destination_id": 23,
+            "from": {"level": 6, "area": 1, "room": 1},
+            "to": {"level": 6, "area": 1, "room": 2},
+        }
+        self.assertEqual(
+            new_door_transition(before, {"door_transition": transition}), transition
+        )
+        self.assertIsNone(
+            new_door_transition(
+                {"door_transition": {"sequence": 4}},
+                {"door_transition": transition},
+            )
+        )
+
+    def test_door_transition_is_remembered_and_summarized(self) -> None:
+        before = {"door_transition": {"sequence": 0}}
+        transition = {
+            "sequence": 1,
+            "source_id": 17,
+            "destination_id": 23,
+            "from": {"level": 6, "area": 1, "room": 1},
+            "to": {"level": 6, "area": 1, "room": 2},
+        }
+        after = {"door_transition": transition}
+        memory: dict = {"completed_interactions": []}
+
+        remember_door_transition(memory, transition)
+        remember_door_transition(memory, transition)
+
+        self.assertEqual(len(memory["completed_interactions"]), 1)
+        self.assertIn("crossed door #17 (room 1 -> 2)", summarize_result(before, after))
+        current_state = after | {"level": 6, "area": 1}
+        self.assertEqual(completed_door_ids_for_scene(memory, current_state), {23})
+
+    def test_loop_guard_only_blocks_completed_destination_door(self) -> None:
+        blocked = {23}
+        self.assertEqual(repeated_door_target_ids(FakePlan(23, 42), blocked), {23})
+        self.assertEqual(repeated_door_target_ids(FakePlan(42), blocked), set())
+
+    def test_explicit_return_instruction_allows_door_reuse(self) -> None:
+        self.assertTrue(command_allows_door_reuse("Go through the door and come back"))
+        self.assertFalse(command_allows_door_reuse("Enter the door"))
 
     def test_wait_for_fresh_state_accepts_an_existing_newer_file(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
