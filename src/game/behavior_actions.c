@@ -5,6 +5,7 @@
 #include "actors/group12.h"
 #include "actors/group13.h"
 #include "area.h"
+#include "ai_bridge.h"
 #include "audio/external.h"
 #include "behavior_actions.h"
 #include "behavior_data.h"

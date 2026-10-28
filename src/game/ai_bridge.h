@@ -3,6 +3,8 @@
 
 #include <PR/ultratypes.h>
 
+struct Object;
+
 enum AiBridgeStatus {
     AI_BRIDGE_READY,
     AI_BRIDGE_THINKING,
@@ -29,5 +31,15 @@ void ai_bridge_render_dialogue(void);
 
 /** Return TRUE while the custom Mario speech overlay is active. */
 s32 ai_bridge_is_speaking(void);
+
+/** Record authoritative gameplay outcomes for instruction-scoped AI memory. */
+void ai_bridge_note_object_attacked(struct Object *object);
+void ai_bridge_note_object_deleted(struct Object *object);
+void ai_bridge_note_coin_collected(struct Object *object, s32 value);
+void ai_bridge_note_star_collected(struct Object *object);
+void ai_bridge_note_item_collected(struct Object *object);
+void ai_bridge_note_shell_mounted(struct Object *object);
+void ai_bridge_note_switch_activated(struct Object *object);
+void ai_bridge_note_damage(struct Object *source, s32 amount);
 
 #endif // AI_BRIDGE_H

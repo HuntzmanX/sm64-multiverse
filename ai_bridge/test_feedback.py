@@ -6,10 +6,15 @@ from pathlib import Path
 
 from feedback import (
     command_allows_door_reuse,
+    command_allows_multiple_of_type,
     completed_door_ids_for_scene,
+    new_game_events,
     new_door_transition,
     read_status,
     remember_door_transition,
+    remember_game_events,
+    remember_plan_targets,
+    repeated_completed_target_ids,
     repeated_door_target_ids,
     summarize_result,
     wait_for_completion,
@@ -125,6 +130,116 @@ class FeedbackTests(unittest.TestCase):
     def test_explicit_return_instruction_allows_door_reuse(self) -> None:
         self.assertTrue(command_allows_door_reuse("Go through the door and come back"))
         self.assertFalse(command_allows_door_reuse("Enter the door"))
+
+    def test_new_events_are_selected_by_sequence(self) -> None:
+        before = {"event_sequence": 7}
+        after = {
+            "event_sequence": 9,
+            "recent_events": [
+                {"sequence": 7, "type": "old"},
+                {"sequence": 8, "type": "coin_collected"},
+                {"sequence": 9, "type": "enemy_defeated"},
+            ],
+        }
+        self.assertEqual(
+            [event["sequence"] for event in new_game_events(before, after)], [8, 9]
+        )
+
+    def test_committed_target_completes_only_for_its_exact_object(self) -> None:
+        memory: dict = {}
+        state = {
+            "nearby_objects": [
+                {"id": 12, "type": "goomba"},
+                {"id": 13, "type": "goomba"},
+            ]
+        }
+        remember_plan_targets(memory, FakePlan(12), state, cycle=1)
+        remember_game_events(
+            memory,
+            [
+                {
+                    "sequence": 1,
+                    "type": "enemy_defeated",
+                    "object_id": 13,
+                    "object_type": "goomba",
+                }
+            ],
+        )
+        self.assertEqual(memory["committed_targets"][0]["status"], "active")
+        remember_game_events(
+            memory,
+            [
+                {
+                    "sequence": 2,
+                    "type": "enemy_defeated",
+                    "object_id": 12,
+                    "object_type": "goomba",
+                }
+            ],
+        )
+        self.assertEqual(memory["committed_targets"][0]["status"], "completed")
+
+    def test_singular_goal_blocks_adopting_a_second_object(self) -> None:
+        state = {"nearby_objects": [{"id": 13, "type": "goomba"}]}
+        memory = {
+            "committed_targets": [
+                {"object_id": 12, "object_type": "goomba", "status": "completed"}
+            ]
+        }
+        self.assertEqual(
+            repeated_completed_target_ids(
+                FakePlan(13), state, memory, "Kill a Goomba"
+            ),
+            {13},
+        )
+        self.assertEqual(
+            repeated_completed_target_ids(
+                FakePlan(13), state, memory, "Kill Goombas until none are near"
+            ),
+            set(),
+        )
+
+    def test_explicit_and_plural_scopes_allow_multiple_targets(self) -> None:
+        self.assertFalse(command_allows_multiple_of_type("Get a red coin", "red_coin"))
+        self.assertTrue(command_allows_multiple_of_type("Get three red coins", "red_coin"))
+        self.assertTrue(command_allows_multiple_of_type("Kill Goombas", "goomba"))
+        self.assertFalse(
+            command_allows_multiple_of_type(
+                "Get a red coin, then break two boxes", "red_coin"
+            )
+        )
+        self.assertTrue(
+            command_allows_multiple_of_type(
+                "Get a red coin, then break two boxes", "breakable_box"
+            )
+        )
+        self.assertFalse(
+            command_allows_multiple_of_type(
+                "Kill a Goomba, but if another gets near run away", "goomba"
+            )
+        )
+        self.assertTrue(
+            command_allows_multiple_of_type(
+                "Get a red coin, then get another", "red_coin"
+            )
+        )
+
+    def test_result_summary_includes_authoritative_events(self) -> None:
+        result = summarize_result(
+            {"event_sequence": 2},
+            {
+                "event_sequence": 3,
+                "recent_events": [
+                    {
+                        "sequence": 3,
+                        "type": "coin_collected",
+                        "object_type": "red_coin",
+                        "object_id": 44,
+                    }
+                ],
+            },
+        )
+        self.assertIn("coin collected red coin #44", result)
 
     def test_wait_for_fresh_state_accepts_an_existing_newer_file(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

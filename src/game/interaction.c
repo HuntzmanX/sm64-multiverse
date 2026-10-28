@@ -1,6 +1,7 @@
 #include <PR/ultratypes.h>
 
 #include "area.h"
+#include "ai_bridge.h"
 #include "actors/common1.h"
 #include "audio/external.h"
 #include "behavior_actions.h"
@@ -274,6 +275,7 @@ u32 attack_object(struct Object *o, s32 interaction) {
     }
 
     o->oInteractStatus = attackType + (INT_STATUS_INTERACTED | INT_STATUS_WAS_ATTACKED);
+    ai_bridge_note_object_attacked(o);
     return attackType;
 }
 
@@ -698,6 +700,9 @@ u32 take_damage_from_interact_object(struct MarioState *m) {
     }
 
     m->hurtCounter += 4 * damage;
+    if (damage > 0) {
+        ai_bridge_note_damage(m->interactObj, damage);
+    }
 
 #if ENABLE_RUMBLE
     queue_rumble_data(5, 80);
@@ -743,6 +748,8 @@ void reset_mario_pitch(struct MarioState *m) {
 u32 interact_coin(struct MarioState *m, UNUSED u32 interactType, struct Object *o) {
     m->numCoins += o->oDamageOrCoinValue;
     m->healCounter += 4 * o->oDamageOrCoinValue;
+
+    ai_bridge_note_coin_collected(o, o->oDamageOrCoinValue);
 
     o->oInteractStatus = INT_STATUS_INTERACTED;
 
@@ -802,6 +809,7 @@ u32 interact_star_or_key(struct MarioState *m, UNUSED u32 interactType, struct O
         }
 
         spawn_object(o, MODEL_NONE, bhvStarKeyCollectionPuffSpawner);
+        ai_bridge_note_star_collected(o);
 
         o->oInteractStatus = INT_STATUS_INTERACTED;
         m->interactObj = o;
@@ -1466,6 +1474,8 @@ u32 interact_koopa_shell(struct MarioState *m, UNUSED u32 interactType, struct O
             m->usedObj = o;
             m->riddenObj = o;
 
+            ai_bridge_note_shell_mounted(o);
+
             attack_object(o, interaction);
             update_mario_sound_and_camera(m);
             play_shell_music();
@@ -1587,6 +1597,7 @@ u32 interact_cap(struct MarioState *m, UNUSED u32 interactType, struct Object *o
     if (m->action != ACT_GETTING_BLOWN && capFlag != 0) {
         m->interactObj = o;
         o->oInteractStatus = INT_STATUS_INTERACTED;
+        ai_bridge_note_item_collected(o);
 
         m->flags &= ~MARIO_CAP_ON_HEAD & ~MARIO_CAP_IN_HAND;
         m->flags |= capFlag;

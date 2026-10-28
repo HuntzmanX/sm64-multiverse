@@ -16,9 +16,13 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from feedback import (
     command_allows_door_reuse,
     completed_door_ids_for_scene,
+    new_game_events,
     new_door_transition,
     read_status,
     remember_door_transition,
+    remember_game_events,
+    remember_plan_targets,
+    repeated_completed_target_ids,
     repeated_door_target_ids,
     status_mtime,
     summarize_result,
@@ -213,6 +217,18 @@ If the instruction was simply to enter or pass through it, the goal is complete:
 touch, or cross the arrival-side door again, even though it remains nearby. Only reuse a completed
 door when the original player instruction explicitly asks Mario to return, go back, or cross it
 again. Continue with any genuinely later part of the instruction from the new room or area.
+
+The state may include instruction_memory.committed_targets and completed_events. Treat these as
+authoritative instruction-scoped memory. A committed target is the particular object selected for
+the player's request, not merely an example of its type. When its status is completed, do not adopt
+another object of the same type for a singular request such as "kill a Goomba" or "get a red coin".
+Continue to a genuinely later, different part of a chained instruction instead. Multiple targets
+are appropriate only when the player explicitly requested a number, a plural/group, all/every,
+another/more, or an open condition such as "until none are near". Events such as coin_collected,
+enemy_defeated, object_broken, switch_activated, star_collected, key_collected, damage_taken, mario_died, and
+scene_changed describe outcomes that actually occurred; never infer failure merely because another
+similar object remains visible. If mario_died occurred, abandon the old physical sequence and plan
+from the respawned state.
 
 The state may include mario_memory.known_techniques. These are the advanced move names the player
 has successfully taught Mario, together with their requirements and remembered input recipes. A
@@ -519,8 +535,14 @@ def main() -> int:
             continue
 
         history: list[str] = []
-        instruction_memory: dict = {"completed_interactions": [], "blocked_repeats": []}
+        instruction_memory: dict = {
+            "completed_interactions": [],
+            "completed_events": [],
+            "committed_targets": [],
+            "blocked_repeats": [],
+        }
         door_loop_rejections = 0
+        goal_loop_rejections = 0
         try:
             for cycle in range(1, MAX_CONTROL_CYCLES + 1):
                 before_state = read_state(args.state_file)
@@ -564,6 +586,29 @@ def main() -> int:
                         print("Stopped this instruction before Mario could loop again.")
                         break
                     continue
+                repeated_goal_ids = repeated_completed_target_ids(
+                    plan, before_state, instruction_memory, command
+                )
+                if repeated_goal_ids:
+                    goal_loop_rejections += 1
+                    repeated_text = ", ".join(
+                        f"#{object_id}" for object_id in sorted(repeated_goal_ids)
+                    )
+                    message = (
+                        f"rejected replacement target {repeated_text}; the singular "
+                        "object goal already succeeded"
+                    )
+                    print(f"Goal guard: {message}. Re-observing...")
+                    history.append(f"Cycle {cycle}: {message}")
+                    instruction_memory["blocked_repeats"].append(
+                        {"cycle": cycle, "object_ids": sorted(repeated_goal_ids)}
+                    )
+                    write_packet(args.command_file, build_status_packet("READY"))
+                    if goal_loop_rejections >= 2:
+                        print("Stopped before Mario could turn one target into a collection quest.")
+                        break
+                    continue
+                remember_plan_targets(instruction_memory, plan, before_state, cycle)
                 camera_yaw = before_state.get("camera_yaw")
                 packet = build_plan_packet(
                     plan.steps,
@@ -618,6 +663,9 @@ def main() -> int:
                 wait_for_fresh_state(args.state_file, completion_mtime)
                 after_state = read_state(args.state_file)
                 result_summary = summarize_result(before_state, after_state)
+                events = new_game_events(before_state, after_state)
+                if events:
+                    remember_game_events(instruction_memory, events)
                 door_transition = new_door_transition(before_state, after_state)
                 if door_transition is not None:
                     remember_door_transition(instruction_memory, door_transition)

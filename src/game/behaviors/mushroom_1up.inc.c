@@ -6,6 +6,7 @@ void bhv_1up_interact(void) {
     if (obj_check_if_collided_with_object(o, gMarioObject) == 1) {
         play_sound(SOUND_GENERAL_COLLECT_1UP, gGlobalSoundSource);
         gMarioState->numLives++;
+        ai_bridge_note_item_collected(o);
         o->activeFlags = ACTIVE_FLAG_DEACTIVATED;
 #if ENABLE_RUMBLE
         queue_rumble_data(5, 80);

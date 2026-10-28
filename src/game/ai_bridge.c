@@ -46,6 +46,10 @@
 #define AI_BRIDGE_SIDEBAR_STEPS 7
 #define AI_BRIDGE_SIDEBAR_WIDTH 118.0f
 #define AI_BRIDGE_SIDEBAR_COLUMNS 18
+#define AI_BRIDGE_EVENT_CAPACITY 24
+#define AI_BRIDGE_PENDING_ATTACKS 16
+#define AI_BRIDGE_ATTACK_EVENT_WINDOW 300
+#define AI_BRIDGE_EVENT_TYPE_LENGTH 31
 #define AI_TECHNIQUE_BACKFLIP (1 << 0)
 #define AI_TECHNIQUE_SIDE_FLIP (1 << 1)
 #define AI_TECHNIQUE_LONG_JUMP (1 << 2)
@@ -87,6 +91,26 @@ struct AiBridgeNearbyObject {
     s32 threat;
 };
 
+struct AiBridgeEvent {
+    u32 sequence;
+    char type[AI_BRIDGE_EVENT_TYPE_LENGTH + 1];
+    char objectType[AI_BRIDGE_EVENT_TYPE_LENGTH + 1];
+    s16 objectId;
+    s16 level;
+    s16 area;
+    s16 room;
+    s32 value;
+    f32 x;
+    f32 y;
+    f32 z;
+};
+
+struct AiBridgePendingAttack {
+    struct Object *object;
+    s16 objectId;
+    u32 frame;
+};
+
 static enum AiBridgeStatus sStatus = AI_BRIDGE_READY;
 static s32 sWasActive;
 static s32 sTelemetryTimer;
@@ -108,6 +132,16 @@ static s16 sDoorToArea;
 static s16 sDoorToRoom;
 static u32 sTechniqueMask;
 static u32 sPreviousMarioAction = ACT_UNINITIALIZED;
+static struct AiBridgeEvent sEvents[AI_BRIDGE_EVENT_CAPACITY];
+static struct AiBridgePendingAttack sPendingAttacks[AI_BRIDGE_PENDING_ATTACKS];
+static s32 sEventCount;
+static s32 sEventNext;
+static u32 sEventSequence;
+static s16 sPreviousLevel;
+static s16 sPreviousArea;
+static s16 sPreviousRoom;
+static s32 sPreviousSceneValid;
+static s32 sMarioWasDead;
 
 ALIGNED8 static const Texture sAiReadyTexture[] = {
 #include "assets/ai-ready.rgba16.inc.c"
@@ -296,10 +330,12 @@ static const char *ai_bridge_object_type(struct Object *object, s32 *threat) {
         || ai_bridge_has_behavior(object, bhvSingleCoinGetsSpawned)
         || ai_bridge_has_behavior(object, bhvTemporaryYellowCoin)) return "yellow_coin";
     if (ai_bridge_has_behavior(object, bhvMovingBlueCoin)
+        || ai_bridge_has_behavior(object, bhvHiddenBlueCoin)
         || ai_bridge_has_behavior(object, bhvBlueCoinSliding)
         || ai_bridge_has_behavior(object, bhvBlueCoinJumping)
         || ai_bridge_has_behavior(object, bhvMrIBlueCoin)) return "blue_coin";
     if (ai_bridge_has_behavior(object, bhvStar)) return "star";
+    if (ai_bridge_has_behavior(object, bhvBowserKey)) return "key";
     if (ai_bridge_has_behavior(object, bhvDoor)
         || ai_bridge_has_behavior(object, bhvDoorWarp)
         || ai_bridge_has_behavior(object, bhvStarDoor)) return "door";
@@ -355,6 +391,189 @@ static const char *ai_bridge_object_type(struct Object *object, s32 *threat) {
 
     *threat = FALSE;
     return NULL;
+}
+
+static void ai_bridge_record_event(const char *eventType, struct Object *object,
+                                   const char *objectType, s32 value) {
+    struct AiBridgeEvent *event = &sEvents[sEventNext];
+
+    memset(event, 0, sizeof(*event));
+    event->sequence = ++sEventSequence;
+    snprintf(event->type, sizeof(event->type), "%s", eventType);
+    if (objectType != NULL) {
+        snprintf(event->objectType, sizeof(event->objectType), "%s", objectType);
+    }
+    event->objectId = object != NULL ? ai_controller_object_id(object) : 0;
+    event->level = gCurrLevelNum;
+    event->area = gCurrAreaIndex;
+    event->room = gMarioCurrentRoom;
+    event->value = value;
+    if (object != NULL) {
+        event->x = object->oPosX;
+        event->y = object->oPosY;
+        event->z = object->oPosZ;
+    } else if (gMarioState != NULL) {
+        event->x = gMarioState->pos[0];
+        event->y = gMarioState->pos[1];
+        event->z = gMarioState->pos[2];
+    }
+
+    sEventNext = (sEventNext + 1) % AI_BRIDGE_EVENT_CAPACITY;
+    if (sEventCount < AI_BRIDGE_EVENT_CAPACITY) {
+        sEventCount++;
+    }
+}
+
+void ai_bridge_note_object_attacked(struct Object *object) {
+    const char *type;
+    s32 threat;
+    s32 i;
+    s32 slot = -1;
+
+    if (object == NULL || sStatus != AI_BRIDGE_EXECUTING) return;
+    type = ai_bridge_object_type(object, &threat);
+    if (type == NULL || (!threat && strstr(type, "box") == NULL)) return;
+
+    for (i = 0; i < AI_BRIDGE_PENDING_ATTACKS; i++) {
+        if (sPendingAttacks[i].object == object) {
+            slot = i;
+            break;
+        }
+        if (slot < 0 && sPendingAttacks[i].object == NULL) {
+            slot = i;
+        }
+    }
+    if (slot < 0) {
+        slot = 0;
+        for (i = 1; i < AI_BRIDGE_PENDING_ATTACKS; i++) {
+            if (sPendingAttacks[i].frame < sPendingAttacks[slot].frame) slot = i;
+        }
+    }
+    sPendingAttacks[slot].object = object;
+    sPendingAttacks[slot].objectId = ai_controller_object_id(object);
+    sPendingAttacks[slot].frame = gGlobalTimer;
+}
+
+void ai_bridge_note_object_deleted(struct Object *object) {
+    const char *type;
+    s32 threat;
+    s32 i;
+
+    if (object == NULL) return;
+    for (i = 0; i < AI_BRIDGE_PENDING_ATTACKS; i++) {
+        if (sPendingAttacks[i].object != object) continue;
+        if (gGlobalTimer - sPendingAttacks[i].frame <= AI_BRIDGE_ATTACK_EVENT_WINDOW) {
+            type = ai_bridge_object_type(object, &threat);
+            if (type != NULL && threat) {
+                ai_bridge_record_event("enemy_defeated", object, type, 1);
+            } else if (type != NULL && strstr(type, "box") != NULL) {
+                ai_bridge_record_event("object_broken", object, type, 1);
+            }
+        }
+        memset(&sPendingAttacks[i], 0, sizeof(sPendingAttacks[i]));
+        return;
+    }
+}
+
+void ai_bridge_note_coin_collected(struct Object *object, s32 value) {
+    const char *type;
+    s32 threat;
+
+    if (object == NULL) return;
+    type = ai_bridge_object_type(object, &threat);
+    ai_bridge_record_event("coin_collected", object,
+                           type != NULL ? type : "coin", value);
+}
+
+void ai_bridge_note_star_collected(struct Object *object) {
+    const char *type;
+    s32 threat;
+
+    if (object == NULL) return;
+    type = ai_bridge_object_type(object, &threat);
+    ai_bridge_record_event(type != NULL && strcmp(type, "key") == 0
+                               ? "key_collected" : "star_collected",
+                           object, type != NULL ? type : "star_or_key", 1);
+}
+
+void ai_bridge_note_item_collected(struct Object *object) {
+    const char *type;
+    s32 threat;
+
+    if (object == NULL) return;
+    type = ai_bridge_object_type(object, &threat);
+    ai_bridge_record_event("item_collected", object,
+                           type != NULL ? type : "cap", 1);
+}
+
+void ai_bridge_note_shell_mounted(struct Object *object) {
+    ai_bridge_record_event("shell_mounted", object, "koopa_shell", 1);
+}
+
+void ai_bridge_note_switch_activated(struct Object *object) {
+    const char *type;
+    s32 threat;
+
+    if (object == NULL) return;
+    type = ai_bridge_object_type(object, &threat);
+    ai_bridge_record_event("switch_activated", object,
+                           type != NULL ? type : "switch", 1);
+}
+
+void ai_bridge_note_damage(struct Object *source, s32 amount) {
+    const char *type = NULL;
+    s32 threat;
+
+    if (source != NULL) type = ai_bridge_object_type(source, &threat);
+    ai_bridge_record_event("damage_taken", source,
+                           type != NULL ? type : "environment", amount);
+}
+
+static void ai_bridge_track_world_events(void) {
+    s32 dead;
+
+    if (gMarioState == NULL || gMarioState->action == ACT_UNINITIALIZED) return;
+    if (!sPreviousSceneValid) {
+        sPreviousLevel = gCurrLevelNum;
+        sPreviousArea = gCurrAreaIndex;
+        sPreviousRoom = gMarioCurrentRoom;
+        sPreviousSceneValid = TRUE;
+    } else if (sPreviousLevel != gCurrLevelNum || sPreviousArea != gCurrAreaIndex
+               || sPreviousRoom != gMarioCurrentRoom) {
+        ai_bridge_record_event("scene_changed", NULL, "", 1);
+        sPreviousLevel = gCurrLevelNum;
+        sPreviousArea = gCurrAreaIndex;
+        sPreviousRoom = gMarioCurrentRoom;
+    }
+
+    dead = gMarioState->health < 0x100;
+    if (dead && !sMarioWasDead) {
+        ai_bridge_record_event("mario_died", NULL, "", 1);
+    } else if (!dead && sMarioWasDead) {
+        ai_bridge_record_event("mario_respawned", NULL, "", 1);
+    }
+    sMarioWasDead = dead;
+}
+
+static void ai_bridge_write_events(FILE *file) {
+    s32 i;
+    s32 index = (sEventNext - sEventCount + AI_BRIDGE_EVENT_CAPACITY)
+        % AI_BRIDGE_EVENT_CAPACITY;
+
+    fprintf(file, "  \"event_sequence\": %u,\n", sEventSequence);
+    fprintf(file, "  \"recent_events\": [\n");
+    for (i = 0; i < sEventCount; i++) {
+        struct AiBridgeEvent *event = &sEvents[(index + i) % AI_BRIDGE_EVENT_CAPACITY];
+        fprintf(file,
+                "    {\"sequence\": %u, \"type\": \"%s\", \"object_id\": %d, "
+                "\"object_type\": \"%s\", \"value\": %d, "
+                "\"level\": %d, \"area\": %d, \"room\": %d, "
+                "\"position\": {\"x\": %.1f, \"y\": %.1f, \"z\": %.1f}}%s\n",
+                event->sequence, event->type, event->objectId, event->objectType,
+                event->value, event->level, event->area, event->room,
+                event->x, event->y, event->z, i + 1 < sEventCount ? "," : "");
+    }
+    fprintf(file, "  ],\n");
 }
 
 static void ai_bridge_insert_nearby_object(struct AiBridgeNearbyObject *nearby, s32 *count,
@@ -976,6 +1195,8 @@ static void ai_bridge_write_telemetry(void) {
             "  \"cutscene\": %s,\n"
             "  \"dialog\": {\"active\": %s, \"id\": %d},\n"
             "  \"health\": %d,\n"
+            "  \"coins\": %d,\n"
+            "  \"red_coins_collected\": %d,\n"
             "  \"environment\": {\"floor_height\": %.1f, \"height_above_floor\": %.1f, "
             "\"floor_type\": %d, \"floor_normal_y\": %.3f, \"touching_wall\": %s, "
             "\"water_level\": %d},\n"
@@ -994,6 +1215,7 @@ static void ai_bridge_write_telemetry(void) {
             cutscene ? "true" : "false",
             get_dialog_id() != DIALOG_NONE ? "true" : "false", get_dialog_id(),
             gMarioState->health,
+            gMarioState->numCoins, gRedCoinsCollected,
             gMarioState->floorHeight, gMarioState->pos[1] - gMarioState->floorHeight,
             floorType, floorNormalY, gMarioState->wall != NULL ? "true" : "false",
             gMarioState->waterLevel,
@@ -1002,6 +1224,7 @@ static void ai_bridge_write_telemetry(void) {
             sDoorFromLevel, sDoorFromArea, sDoorFromRoom,
             sDoorToLevel, sDoorToArea, sDoorToRoom);
     ai_bridge_write_techniques(file);
+    ai_bridge_write_events(file);
     fprintf(file, "  \"nearby_objects\": [\n");
     for (i = 0; i < nearbyCount; i++) {
         struct Object *object = nearby[i].object;
@@ -1038,6 +1261,7 @@ void ai_bridge_update(void) {
 
     ai_bridge_track_door_transition();
     ai_bridge_track_techniques();
+    ai_bridge_track_world_events();
     active = ai_controller_is_active() || sDoorTransitionActive;
 
     if (sDialogueTimer > 0) {
@@ -1080,6 +1304,7 @@ s32 ai_bridge_has_pending_instruction(void) {
 
 void ai_bridge_cancel_current(void) {
     ai_controller_clear();
+    memset(sPendingAttacks, 0, sizeof(sPendingAttacks));
     sDialogueTimer = 0;
     sDialogueStepTimer = 0;
     ai_bridge_set_status(AI_BRIDGE_CANCELLED);
@@ -1163,6 +1388,30 @@ void ai_bridge_render_dialogue(void) {
 
 s32 ai_bridge_is_speaking(void) {
     return FALSE;
+}
+
+void ai_bridge_note_object_attacked(UNUSED struct Object *object) {
+}
+
+void ai_bridge_note_object_deleted(UNUSED struct Object *object) {
+}
+
+void ai_bridge_note_coin_collected(UNUSED struct Object *object, UNUSED s32 value) {
+}
+
+void ai_bridge_note_star_collected(UNUSED struct Object *object) {
+}
+
+void ai_bridge_note_item_collected(UNUSED struct Object *object) {
+}
+
+void ai_bridge_note_shell_mounted(UNUSED struct Object *object) {
+}
+
+void ai_bridge_note_switch_activated(UNUSED struct Object *object) {
+}
+
+void ai_bridge_note_damage(UNUSED struct Object *source, UNUSED s32 amount) {
 }
 
 #endif

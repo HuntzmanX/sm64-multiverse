@@ -1,6 +1,7 @@
 #include <PR/ultratypes.h>
 
 #include "sm64.h"
+#include "ai_bridge.h"
 #include "area.h"
 #include "behavior_actions.h"
 #include "behavior_data.h"
@@ -1144,6 +1145,7 @@ void obj_mark_for_deletion(struct Object *obj) {
     //  setting it to 0 could potentially enable unexpected behavior. After an
     //  object is marked for deletion, it still updates on that frame (I think),
     //  so this is worth looking into.
+    ai_bridge_note_object_deleted(obj);
     obj->activeFlags = ACTIVE_FLAG_DEACTIVATED;
 }
 

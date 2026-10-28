@@ -18,6 +18,7 @@ void bhv_purple_switch_loop(void) {
             cur_obj_scale(1.5f);
             if (gMarioObject->platform == o && !(gMarioStates[0].action & MARIO_UNKNOWN_13)) {
                 if (lateral_dist_between_objects(o, gMarioObject) < 127.5) {
+                    ai_bridge_note_switch_activated(o);
                     o->oAction = PURPLE_SWITCH_PRESSED;
                 }
             }

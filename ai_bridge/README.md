@@ -21,6 +21,7 @@ runs inside the game process.
 - [Available AI actions](#available-ai-actions)
 - [Recognised objects](#recognised-objects)
 - [Object tracking and conditional instructions](#object-tracking-and-conditional-instructions)
+- [Instruction goals and gameplay events](#instruction-goals-and-gameplay-events)
 - [Mario memory and teachable techniques](#mario-memory-and-teachable-techniques)
 - [NPCs, signs, and native dialog](#npcs-signs-and-native-dialog)
 - [Mario speech and personality](#mario-speech-and-personality)
@@ -42,6 +43,7 @@ runs inside the game process.
   action Mario has already started.
 - Live steering toward or away from recognised moving objects.
 - Stable object IDs, target sparkles, arrival checks, and stuck detection.
+- Instruction-scoped target commitments and authoritative gameplay event memory.
 - Conditional behaviour based on nearby threats and refreshed observations.
 - In-game command entry with safe replacement of an active instruction.
 - Native-looking Mario speech, reactive personality, and post-dialog remarks.
@@ -333,6 +335,7 @@ receives.
 | `yellow_coin` | Static, moving, spawned, and temporary yellow coins |
 | `blue_coin` | Moving, sliding, jumping, and Mr. I blue coins |
 | `star` | Spawned collectible Power Star |
+| `key` | Bowser key |
 | `one_up` | Walking, fleeing, sliding, and jump-on-approach 1-Ups |
 | `recovery_heart` | Recovery heart |
 | `wing_cap` | Loose Wing Cap |
@@ -438,6 +441,42 @@ hard-coded restrictions.
 After a plan, the bridge can report the measured result to the model and ask
 for another plan. This enables conditions and corrections, but observation
 happens between bursts rather than continuously.
+
+## Instruction goals and gameplay events
+
+When a plan approaches a recognised object, the companion commits that exact
+object ID to the current player instruction. Authoritative events from the game
+can then complete the commitment. A request for `a Goomba` therefore remains
+attached to the selected Goomba rather than silently transferring to its
+neighbour after the first one dies. The same rule prevents `Get a red coin`
+from becoming an unrequested hunt for every remaining red coin.
+
+The singular-target guard applies per object type, so a chain such as `Get a
+red coin, then break a box` can continue to its genuinely different next goal.
+Explicit multi-target wording allows retargeting: numbers, plurals, `all`,
+`every`, `another`, `more`, and open conditions such as `until none are near`.
+
+The game currently records these events in a 24-entry rolling history:
+
+| Event | Authoritative trigger |
+|---|---|
+| `coin_collected` | Mario's coin interaction, with exact coin ID/type and value. |
+| `enemy_defeated` | A recognised enemy attacked during AI control reaches its real deletion path. |
+| `object_broken` | An attacked recognised box reaches its deletion path. |
+| `star_collected` | Mario completes a Power Star collection interaction. |
+| `key_collected` | Mario completes a Bowser-key collection interaction. |
+| `item_collected` | Mario collects a recognised 1-Up, Wing, Metal, or Vanish Cap. |
+| `shell_mounted` | Mario successfully mounts a Koopa shell. |
+| `switch_activated` | A cap, blue-coin, or purple switch enters its pressed state. |
+| `damage_taken` | An interaction applies non-zero damage to Mario. |
+| `mario_died`, `mario_respawned` | Mario crosses the health/death boundary. |
+| `scene_changed` | The level, area, or collision room changes. |
+
+Object disappearance by itself is not treated as success. Enemy and box
+completion requires a preceding AI-controlled attack, preventing an object
+leaving the loaded area from looking like a kill. Event memory lasts for the
+current player instruction; learned techniques and named landmarks remain the
+separate persistent memory system.
 
 ## Mario memory and teachable techniques
 
@@ -571,6 +610,8 @@ The game refreshes `.sm64-ai-state.json` about twice per second.
 | `cutscene` | In the cutscene action group. |
 | `dialog.active`, `dialog.id` | Native dialog visibility and ID. |
 | `health` | Raw SM64 health value. |
+| `coins` | Current course coin total. |
+| `red_coins_collected` | Current red-coin counter used by the game. |
 | `environment.floor_height` | Floor height beneath Mario. |
 | `environment.height_above_floor` | Mario Y minus floor height. |
 | `environment.floor_type` | Raw floor surface type. |
@@ -580,6 +621,8 @@ The game refreshes `.sm64-ai-state.json` about twice per second.
 | `target_result` | Latest target outcome. |
 | `door_transition` | Latest completed door crossing: sequence, source/arrival IDs, and before/after scene. |
 | `techniques_seen` | Advanced actions genuinely performed during AI-controlled instructions this game session. |
+| `event_sequence` | Sequence number of the newest authoritative gameplay event. |
+| `recent_events` | Rolling history of the latest 24 collections, defeats, interactions, damage, deaths, and scene changes. |
 | `nearby_objects` | Up to 20 recognised objects within 8000 units. |
 
 Each nearby object contains:
@@ -596,8 +639,8 @@ Each nearby object contains:
 | `stick_toward` | Legacy camera-relative hint; live plans use `target`. |
 
 Result summaries include horizontal distance moved, height change, health
-change, target outcome, completed door crossings, and native-dialog transitions
-when available.
+change, target outcome, authoritative gameplay events, completed door
+crossings, and native-dialog transitions when available.
 
 ## Status icons
 
