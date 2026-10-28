@@ -190,6 +190,7 @@ perform Mario's actions. Keyboard and mouse remain available for UI control:
 | Mouse wheel | Move to the previous/next item in list and carousel menus. |
 | Left click | Confirm, select, or advance native dialog (A). |
 | `Enter` | Keyboard confirm, select, or advance native dialog (A). |
+| `Space` | Manual native-dialog/menu advance (A); remains a normal space while typing a command. |
 | `Escape` | Back/dialog cancel (B), pause where appropriate, or emergency-cancel active AI input. |
 | Arrow keys | Navigate menus with the virtual stick. |
 | Physical Start | Emergency-cancel an executing AI sequence. |

@@ -34,6 +34,7 @@
 #define KEY_F         0x21
 #define KEY_LEFTSHIFT 0x2A
 #define KEY_RIGHTSHIFT 0x36
+#define KEY_SPACE     0x39
 #define KEY_F1        0x3B
 #define KEY_F2        0x3C
 #define KEY_UP        0x148
@@ -226,7 +227,7 @@ s32 ai_input_on_key_down(s32 key) {
         }
         return TRUE;
     }
-    if (key == KEY_ENTER) {
+    if (key == KEY_ENTER || key == KEY_SPACE) {
         sUiConfirmDown = TRUE;
         return TRUE;
     }
@@ -247,12 +248,12 @@ s32 ai_input_on_key_down(s32 key) {
 
 s32 ai_input_on_key_up(s32 key) {
     if (key >= 0 && key < (s32) (sizeof(sKeys) / sizeof(sKeys[0]))) sKeys[key] = FALSE;
-    if (key == KEY_ENTER) sUiConfirmDown = FALSE;
+    if (key == KEY_ENTER || key == KEY_SPACE) sUiConfirmDown = FALSE;
     if (key == KEY_ESCAPE) sUiBackDown = FALSE;
     if (key == KEY_LEFTSHIFT || key == KEY_RIGHTSHIFT) {
         sShiftDown = sKeys[KEY_LEFTSHIFT] || sKeys[KEY_RIGHTSHIFT];
     }
-    return sTyping || key == KEY_ESCAPE || key == KEY_ENTER
+    return sTyping || key == KEY_ESCAPE || key == KEY_ENTER || key == KEY_SPACE
         || key == KEY_TAB || key == KEY_T || key == KEY_F || key == KEY_F1 || key == KEY_F2
         || (ai_freecam_is_enabled()
             && (key == KEY_Q || key == 0x11 || key == KEY_E
