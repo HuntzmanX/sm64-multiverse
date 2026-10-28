@@ -21,6 +21,7 @@ runs inside the game process.
 - [Available AI actions](#available-ai-actions)
 - [Recognised objects](#recognised-objects)
 - [Object tracking and conditional instructions](#object-tracking-and-conditional-instructions)
+- [Mario memory and teachable techniques](#mario-memory-and-teachable-techniques)
 - [NPCs, signs, and native dialog](#npcs-signs-and-native-dialog)
 - [Mario speech and personality](#mario-speech-and-personality)
 - [Telemetry](#telemetry)
@@ -44,6 +45,7 @@ runs inside the game process.
 - Conditional behaviour based on nearby threats and refreshed observations.
 - In-game command entry with safe replacement of an active instruction.
 - Native-looking Mario speech, reactive personality, and post-dialog remarks.
+- Persistent Mario memory with locked, player-teachable advanced techniques.
 - Automated sign and NPC dialog advancement.
 - Free, Focus, Follow, and First-Person spectator camera modes.
 - Native mouse file selection plus wheel-and-click control for list and carousel menus.
@@ -202,9 +204,9 @@ the model. Different wording can express the same action.
 - `Run forward for two seconds.`
 - `Walk backward briefly, then turn left.`
 - `Run forward, jump, and keep moving through the jump.`
-- `Crouch, then backflip.`
+- `Hold crouch, then jump while keeping crouch held.`
 - `Punch three times.`
-- `Long jump forward.`
+- `Run forward, hold crouch, then jump without releasing forward.`
 - `Wait for a second, then jump.`
 
 Complex moves use normal N64 inputs, so success still depends on Mario's
@@ -422,6 +424,37 @@ After a plan, the bridge can report the measured result to the model and ask
 for another plan. This enables conditions and corrections, but observation
 happens between bursts rather than continuously.
 
+## Mario memory and teachable techniques
+
+Mario begins without names or saved recipes for these six advanced techniques:
+
+| Technique | Real game action used to confirm learning |
+|---|---|
+| Backflip | `ACT_BACKFLIP` |
+| Side Flip | `ACT_SIDE_FLIP` |
+| Long Jump | `ACT_LONG_JUMP` |
+| Slide Jump | A jump entered directly from a butt slide |
+| Ground Pound | `ACT_GROUND_POUND` |
+| Dive | `ACT_DIVE` |
+
+A locked technique name is intercepted locally before an API request. For
+example, asking Mario to `Backflip` before he understands it produces a spoken
+confused response and no movement. The player can still teach the move with
+literal low-level instructions such as `Hold crouch, then jump while keeping
+crouch held.`
+
+The game watches Mario's real action transitions only while an AI instruction
+is active. Successfully entering the corresponding action is authoritative:
+the companion saves the move, displays Mario's discovery reaction, and exposes
+its requirements and input recipe to future plans. Requests may then use
+the short name, such as `Backflip onto that platform.`
+
+Knowledge is stored in `.sm64-ai-memory.json` at the repository root, outside
+the generated build directory, so it survives normal rebuilds and
+`make distclean`. Writes are atomic and the previous valid version is retained
+as `.sm64-ai-memory.json.bak`. The versioned format already reserves landmarks
+and routes for the next memory update.
+
 ### Door completion memory
 
 Door animations are tracked continuously rather than inferred from Mario's
@@ -500,6 +533,7 @@ The game refreshes `.sm64-ai-state.json` about twice per second.
 | `environment.water_level` | Current water surface height. |
 | `target_result` | Latest target outcome. |
 | `door_transition` | Latest completed door crossing: sequence, source/arrival IDs, and before/after scene. |
+| `techniques_seen` | Advanced actions genuinely performed during AI-controlled instructions this game session. |
 | `nearby_objects` | Up to 20 recognised objects within 8000 units. |
 
 Each nearby object contains:
@@ -557,6 +591,7 @@ separate visual copy, so completed and aborted actions disappear immediately.
 |---|---|
 | Any other text | Send a natural-language instruction. |
 | `/status` | Show bridge status, latest position, and up to eight nearby objects. |
+| `/moves` or `/memory` | List Mario's persistently learned techniques. |
 | `/help` | Print the terminal command list. |
 | `/quit` or `/exit` | Stop the Python companion. |
 
@@ -600,6 +635,8 @@ View generated help with:
 | `.sm64-ai-state.json` | Game -> Python | Current telemetry snapshot. |
 | `.sm64-ai-status` | Both | Ready/Thinking/Executing/Complete/Error/Cancelled. |
 | `.sm64-ai-command` | Python -> Game | Validated plan or status packet. |
+| `.sm64-ai-memory.json` | Python local | Versioned learned techniques, future landmarks, and routes. |
+| `.sm64-ai-memory.json.bak` | Python local | Previous valid memory snapshot used for recovery. |
 
 These runtime files must not be committed. Writes use a temporary file followed
 by a rename so readers do not see partial data.
@@ -641,6 +678,8 @@ its limits, so malformed packets become Error rather than partially executing.
   releases, and button-bearing inputs keep their requested timing.
 - Losing a target or becoming stuck aborts remaining queued steps so the next
   observation can reconsider the plan.
+- Named advanced techniques remain unavailable until their real Mario action
+  has been produced by a low-level AI instruction and saved to memory.
 - AI results are probabilistic. Complex moves can require retries, clearer
   timing, or future telemetry and planning improvements.
 

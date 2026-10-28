@@ -58,6 +58,9 @@ build/*
 .sm64-ai-status.tmp
 .sm64-ai-request
 .sm64-ai-request.tmp
+.sm64-ai-memory.json
+.sm64-ai-memory.json.tmp
+.sm64-ai-memory.json.bak
 __pycache__/
 *.py[cod]
 sm64_save_file.bin

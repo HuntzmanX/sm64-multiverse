@@ -46,6 +46,12 @@
 #define AI_BRIDGE_SIDEBAR_STEPS 7
 #define AI_BRIDGE_SIDEBAR_WIDTH 118.0f
 #define AI_BRIDGE_SIDEBAR_COLUMNS 18
+#define AI_TECHNIQUE_BACKFLIP (1 << 0)
+#define AI_TECHNIQUE_SIDE_FLIP (1 << 1)
+#define AI_TECHNIQUE_LONG_JUMP (1 << 2)
+#define AI_TECHNIQUE_SLIDE_JUMP (1 << 3)
+#define AI_TECHNIQUE_GROUND_POUND (1 << 4)
+#define AI_TECHNIQUE_DIVE (1 << 5)
 #define AI_BRIDGE_ALLOWED_BUTTONS \
     (A_BUTTON | B_BUTTON | Z_TRIG | R_TRIG | U_CBUTTONS | D_CBUTTONS | L_CBUTTONS | R_CBUTTONS)
 
@@ -95,6 +101,8 @@ static s16 sDoorFromRoom;
 static s16 sDoorToLevel;
 static s16 sDoorToArea;
 static s16 sDoorToRoom;
+static u32 sTechniqueMask;
+static u32 sPreviousMarioAction = ACT_UNINITIALIZED;
 
 ALIGNED8 static const Texture sAiReadyTexture[] = {
 #include "assets/ai-ready.rgba16.inc.c"
@@ -172,6 +180,69 @@ static void ai_bridge_track_door_transition(void) {
             && action != ACT_WARP_DOOR_SPAWN)) {
         ai_bridge_finish_door_transition();
     }
+}
+
+static void ai_bridge_track_techniques(void) {
+    u32 action;
+    s32 instructionActive;
+
+    if (gMarioState == NULL || gMarioState->action == ACT_UNINITIALIZED) {
+        return;
+    }
+    action = gMarioState->action;
+    instructionActive = sStatus == AI_BRIDGE_EXECUTING || ai_controller_is_active();
+
+    if (instructionActive && action != sPreviousMarioAction) {
+        switch (action) {
+            case ACT_BACKFLIP:
+                sTechniqueMask |= AI_TECHNIQUE_BACKFLIP;
+                break;
+            case ACT_SIDE_FLIP:
+                sTechniqueMask |= AI_TECHNIQUE_SIDE_FLIP;
+                break;
+            case ACT_LONG_JUMP:
+                sTechniqueMask |= AI_TECHNIQUE_LONG_JUMP;
+                break;
+            case ACT_GROUND_POUND:
+                sTechniqueMask |= AI_TECHNIQUE_GROUND_POUND;
+                break;
+            case ACT_DIVE:
+                sTechniqueMask |= AI_TECHNIQUE_DIVE;
+                break;
+            case ACT_JUMP:
+            case ACT_HOLD_JUMP:
+                if (sPreviousMarioAction == ACT_BUTT_SLIDE
+                    || sPreviousMarioAction == ACT_HOLD_BUTT_SLIDE) {
+                    sTechniqueMask |= AI_TECHNIQUE_SLIDE_JUMP;
+                }
+                break;
+        }
+    }
+    sPreviousMarioAction = action;
+}
+
+static void ai_bridge_write_techniques(FILE *file) {
+    static const struct {
+        u32 mask;
+        const char *name;
+    } techniques[] = {
+        { AI_TECHNIQUE_BACKFLIP, "backflip" },
+        { AI_TECHNIQUE_SIDE_FLIP, "side_flip" },
+        { AI_TECHNIQUE_LONG_JUMP, "long_jump" },
+        { AI_TECHNIQUE_SLIDE_JUMP, "slide_jump" },
+        { AI_TECHNIQUE_GROUND_POUND, "ground_pound" },
+        { AI_TECHNIQUE_DIVE, "dive" },
+    };
+    s32 first = TRUE;
+    u32 i;
+
+    fprintf(file, "  \"techniques_seen\": [");
+    for (i = 0; i < sizeof(techniques) / sizeof(techniques[0]); i++) {
+        if (!(sTechniqueMask & techniques[i].mask)) continue;
+        fprintf(file, "%s\"%s\"", first ? "" : ", ", techniques[i].name);
+        first = FALSE;
+    }
+    fprintf(file, "],\n");
 }
 
 static const char *ai_bridge_exclamation_box_type(s32 contents) {
@@ -812,8 +883,7 @@ static void ai_bridge_write_telemetry(void) {
             "  \"target_result\": \"%s\",\n"
             "  \"door_transition\": {\"sequence\": %u, \"source_id\": %d, "
             "\"destination_id\": %d, \"from\": {\"level\": %d, \"area\": %d, \"room\": %d}, "
-            "\"to\": {\"level\": %d, \"area\": %d, \"room\": %d}},\n"
-            "  \"nearby_objects\": [\n",
+            "\"to\": {\"level\": %d, \"area\": %d, \"room\": %d}},\n",
             gCurrLevelNum, gCurrAreaIndex, gMarioCurrentRoom,
             gMarioState->pos[0], gMarioState->pos[1], gMarioState->pos[2],
             gMarioState->vel[0], gMarioState->vel[1], gMarioState->vel[2],
@@ -829,6 +899,8 @@ static void ai_bridge_write_telemetry(void) {
             sDoorTransitionSequence, sDoorSourceId, sDoorDestinationId,
             sDoorFromLevel, sDoorFromArea, sDoorFromRoom,
             sDoorToLevel, sDoorToArea, sDoorToRoom);
+    ai_bridge_write_techniques(file);
+    fprintf(file, "  \"nearby_objects\": [\n");
     for (i = 0; i < nearbyCount; i++) {
         struct Object *object = nearby[i].object;
         s32 objectId = ai_controller_object_id(object);
@@ -863,6 +935,7 @@ void ai_bridge_update(void) {
     s32 cancelled = ai_controller_take_cancelled();
 
     ai_bridge_track_door_transition();
+    ai_bridge_track_techniques();
     active = ai_controller_is_active() || sDoorTransitionActive;
 
     if (sDialogueTimer > 0) {

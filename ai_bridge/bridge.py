@@ -25,9 +25,19 @@ from feedback import (
     wait_for_completion,
     wait_for_fresh_state,
 )
+from memory import (
+    TECHNIQUE_CATALOG,
+    find_locked_technique,
+    load_memory,
+    memory_summary,
+    save_memory,
+    technique_prompt_state,
+    unlock_seen_techniques,
+)
 from protocol import build_plan_packet, build_status_packet, write_packet
 from runtime import (
     COMMAND_FILE_NAME,
+    MEMORY_FILE_NAME,
     REQUEST_FILE_NAME,
     STATE_FILE_NAME,
     STATUS_FILE_NAME,
@@ -179,6 +189,14 @@ If the instruction was simply to enter or pass through it, the goal is complete:
 touch, or cross the arrival-side door again, even though it remains nearby. Only reuse a completed
 door when the original player instruction explicitly asks Mario to return, go back, or cross it
 again. Continue with any genuinely later part of the instruction from the new room or area.
+
+The state may include mario_memory.known_techniques. These are the advanced move names the player
+has successfully taught Mario, together with their requirements and remembered input recipes. A
+named advanced technique is a usable shortcut only when it appears in that list. Follow its recipe
+and check its requirements rather than improvising different timing. The bridge separately blocks
+locked technique names. Literal low-level instructions such as holding crouch and then jumping are
+still valid and may cause Mario to discover a move, but do not rename them as a locked technique or
+claim discovery yourself; the game detects the real Mario action and records it authoritatively.
 """
 
 MAX_CONTROL_CYCLES = 8
@@ -203,6 +221,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--request-file", type=Path, default=runtime_directory / REQUEST_FILE_NAME
+    )
+    parser.add_argument(
+        "--memory-file", type=Path, default=ROOT / MEMORY_FILE_NAME
     )
     return parser.parse_args()
 
@@ -248,6 +269,7 @@ def print_help() -> None:
     print("Commands:")
     print("  <instruction>  Ask Mario to perform a controller sequence")
     print("  /status        Show the game bridge status and latest position")
+    print("  /moves         List Mario's learned advanced techniques")
     print("  /help          Show this help")
     print("  /quit          Stop the companion")
 
@@ -310,6 +332,34 @@ def next_command(commands: queue.Queue[str | None], request_file: Path) -> str |
             time.sleep(0.01)
 
 
+def local_say_step(text: str) -> ControlStep:
+    return ControlStep(
+        type="say",
+        intent="Mario responds",
+        stick_x=0,
+        stick_y=0,
+        buttons=[],
+        frames=20,
+        text=text[:80],
+        target_id=0,
+        target_mode="none",
+        speed=0,
+        stop_distance=0,
+    )
+
+
+def send_local_speech(args: argparse.Namespace, text: str) -> str:
+    step = local_say_step(text)
+    previous_status_mtime = status_mtime(args.status_file)
+    write_packet(args.command_file, build_plan_packet([step]))
+    result = wait_for_completion(
+        args.status_file, previous_status_mtime, timeout_seconds=8.0
+    )
+    if result not in {"COMPLETE", "CANCELLED"}:
+        print(f"Mario's local reply ended with status {result}.", file=sys.stderr)
+    return result
+
+
 def main() -> int:
     args = parse_args()
     if not os.environ.get("OPENAI_API_KEY"):
@@ -317,8 +367,11 @@ def main() -> int:
         return 1
 
     client = OpenAI()
+    mario_memory = load_memory(args.memory_file)
     print(f"SM64 AI bridge ready — model: {args.model}")
     print(f"Game runtime: {args.command_file.parent}")
+    print(f"Mario memory: {args.memory_file}")
+    print(f"Memory: {memory_summary(mario_memory)}")
     print("Enter a command here, or press Tab in-game. Use /help for bridge commands.")
     terminal_commands: queue.Queue[str | None] = queue.Queue()
     threading.Thread(
@@ -344,6 +397,18 @@ def main() -> int:
         if command.lower() == "/status":
             print_status(args.status_file, args.state_file)
             continue
+        if command.lower() in {"/moves", "/memory"}:
+            print(memory_summary(mario_memory))
+            continue
+
+        locked_technique = find_locked_technique(command, mario_memory)
+        if locked_technique is not None:
+            definition = TECHNIQUE_CATALOG[locked_technique]
+            print(
+                f"{definition['name']} is locked. Mario needs a low-level demonstration first."
+            )
+            send_local_speech(args, definition["locked_reply"])
+            continue
 
         history: list[str] = []
         instruction_memory: dict = {"completed_interactions": [], "blocked_repeats": []}
@@ -353,6 +418,9 @@ def main() -> int:
                 before_state = read_state(args.state_file)
                 planning_state = dict(before_state)
                 planning_state["instruction_memory"] = instruction_memory
+                planning_state["mario_memory"] = {
+                    "known_techniques": technique_prompt_state(mario_memory)
+                }
                 write_packet(args.command_file, build_status_packet("THINKING"))
                 plan = request_plan(
                     client, args.model, command, planning_state, cycle, history
@@ -437,6 +505,19 @@ def main() -> int:
                 door_transition = new_door_transition(before_state, after_state)
                 if door_transition is not None:
                     remember_door_transition(instruction_memory, door_transition)
+                newly_learned = unlock_seen_techniques(mario_memory, after_state)
+                if newly_learned:
+                    save_memory(args.memory_file, mario_memory)
+                    learned_names = [
+                        TECHNIQUE_CATALOG[technique_id]["name"]
+                        for technique_id in newly_learned
+                    ]
+                    print(f"New move learned: {', '.join(learned_names)}!")
+                    if len(newly_learned) == 1:
+                        reply = TECHNIQUE_CATALOG[newly_learned[0]]["learned_reply"]
+                    else:
+                        reply = "Mamma mia! Mario learned some new moves!"
+                    send_local_speech(args, reply)
                 print(f"Result: {result_summary}.")
                 history.append(
                     f"Cycle {cycle}: {plan.observation}; {result_summary}"

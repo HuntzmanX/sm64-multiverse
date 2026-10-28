@@ -8,6 +8,7 @@ STATE_FILE_NAME = ".sm64-ai-state.json"
 COMMAND_FILE_NAME = ".sm64-ai-command"
 STATUS_FILE_NAME = ".sm64-ai-status"
 REQUEST_FILE_NAME = ".sm64-ai-request"
+MEMORY_FILE_NAME = ".sm64-ai-memory.json"
 
 
 def _newest_parent(paths: list[Path]) -> Path | None:
