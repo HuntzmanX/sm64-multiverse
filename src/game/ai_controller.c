@@ -14,6 +14,7 @@
 enum AiControllerStepType {
     AI_CONTROLLER_STEP_INPUT,
     AI_CONTROLLER_STEP_TARGET,
+    AI_CONTROLLER_STEP_WAYPOINT,
 };
 
 enum AiControllerTargetResult {
@@ -33,7 +34,11 @@ struct AiControllerStep {
     s16 targetId;
     s8 targetDirection;
     u8 targetSpeed;
+    u8 waypointMode;
     u16 stopDistance;
+    f32 waypointX;
+    f32 waypointY;
+    f32 waypointZ;
     u16 buttons;
     u16 frames;
 };
@@ -151,6 +156,35 @@ s32 ai_controller_enqueue_target(s16 targetId, s8 direction, u8 speed, u16 butto
     return TRUE;
 }
 
+s32 ai_controller_enqueue_waypoint(f32 x, f32 y, f32 z, u8 speed, u16 frames,
+                                   u16 stopDistance, u8 waypointMode) {
+    struct AiControllerStep *step;
+
+    if (frames == 0 || speed == 0 || speed > 80 || stopDistance > 8000
+        || waypointMode > AI_WAYPOINT_CAMERA
+        || sQueueCount >= AI_CONTROLLER_QUEUE_CAPACITY) {
+        return FALSE;
+    }
+
+    step = &sQueue[sQueueTail];
+    step->type = AI_CONTROLLER_STEP_WAYPOINT;
+    step->stickX = 0;
+    step->stickY = 0;
+    step->targetId = 0;
+    step->targetSpeed = speed;
+    step->waypointMode = waypointMode;
+    step->stopDistance = stopDistance;
+    step->waypointX = x;
+    step->waypointY = y;
+    step->waypointZ = z;
+    step->buttons = 0;
+    step->frames = frames;
+
+    sQueueTail = (sQueueTail + 1) % AI_CONTROLLER_QUEUE_CAPACITY;
+    sQueueCount++;
+    return TRUE;
+}
+
 void ai_controller_set_reference_yaw(s16 yaw) {
     sReferenceCameraYaw = yaw;
     sHasReferenceYaw = TRUE;
@@ -192,6 +226,7 @@ static void ai_controller_copy_display_step(struct AiControllerDisplayStep *disp
     display->targetId = step->targetId;
     display->targetDirection = step->targetDirection;
     display->targetSpeed = step->targetSpeed;
+    display->waypointMode = step->waypointMode;
     display->buttons = step->buttons;
     display->frames = frames;
 }
@@ -238,7 +273,8 @@ static s32 ai_controller_begin_next_step(void) {
         sInputLastMarioX = gMarioState->pos[0];
         sInputLastMarioZ = gMarioState->pos[2];
     }
-    if (sCurrentStep.type == AI_CONTROLLER_STEP_TARGET) {
+    if (sCurrentStep.type == AI_CONTROLLER_STEP_TARGET
+        || sCurrentStep.type == AI_CONTROLLER_STEP_WAYPOINT) {
         sTargetResult = AI_TARGET_TRACKING;
         sTargetStuckFrames = 0;
         sTargetMarkerFrames = 0;
@@ -249,6 +285,55 @@ static s32 ai_controller_begin_next_step(void) {
         }
     }
     return TRUE;
+}
+
+static s32 ai_controller_apply_waypoint_step(OSContPad *pad) {
+    f32 targetX = sCurrentStep.waypointX;
+    f32 targetZ = sCurrentStep.waypointZ;
+    f32 dx;
+    f32 dz;
+    f32 distance;
+    f32 movedX;
+    f32 movedZ;
+    s16 targetYaw;
+    s16 relativeYaw;
+
+    if (gMarioState == NULL || gCamera == NULL) {
+        sTargetResult = AI_TARGET_LOST;
+        return TRUE;
+    }
+    if (sCurrentStep.waypointMode == AI_WAYPOINT_CAMERA) {
+        targetX = gCamera->pos[0];
+        targetZ = gCamera->pos[2];
+    }
+
+    dx = targetX - gMarioState->pos[0];
+    dz = targetZ - gMarioState->pos[2];
+    distance = sqrtf(dx * dx + dz * dz);
+    sTargetLastDistance = distance;
+    if (distance <= sCurrentStep.stopDistance) {
+        sTargetResult = AI_TARGET_ARRIVED;
+        return TRUE;
+    }
+
+    if (++sTargetStuckFrames >= 30) {
+        movedX = gMarioState->pos[0] - sTargetLastMarioX;
+        movedZ = gMarioState->pos[2] - sTargetLastMarioZ;
+        if (sqrtf(movedX * movedX + movedZ * movedZ) < 20.0f) {
+            sTargetResult = AI_TARGET_STUCK;
+            return TRUE;
+        }
+        sTargetLastMarioX = gMarioState->pos[0];
+        sTargetLastMarioZ = gMarioState->pos[2];
+        sTargetStuckFrames = 0;
+    }
+
+    targetYaw = atan2s(dz, dx);
+    relativeYaw = targetYaw - gCamera->yaw;
+    pad->stick_x = sins(relativeYaw) * sCurrentStep.targetSpeed;
+    pad->stick_y = -coss(relativeYaw) * sCurrentStep.targetSpeed;
+    pad->button = 0;
+    return FALSE;
 }
 
 static struct Object *ai_controller_target_object(void) {
@@ -428,6 +513,19 @@ void ai_controller_update(OSContPad *pad) {
                 if (sQueueCount == 0) sHasReferenceYaw = FALSE;
                 continue;
             }
+        } else if (sCurrentStep.type == AI_CONTROLLER_STEP_WAYPOINT) {
+            if (ai_controller_apply_waypoint_step(pad)) {
+                sFramesRemaining = 0;
+                if (sTargetResult == AI_TARGET_LOST || sTargetResult == AI_TARGET_STUCK) {
+                    sQueueHead = 0;
+                    sQueueTail = 0;
+                    sQueueCount = 0;
+                    sHasReferenceYaw = FALSE;
+                    return;
+                }
+                if (sQueueCount == 0) sHasReferenceYaw = FALSE;
+                continue;
+            }
         } else {
             pad->stick_x = sCurrentStep.stickX;
             pad->stick_y = sCurrentStep.stickY;
@@ -444,7 +542,8 @@ void ai_controller_update(OSContPad *pad) {
         }
 
         if (--sFramesRemaining == 0) {
-            if (sCurrentStep.type == AI_CONTROLLER_STEP_TARGET
+            if ((sCurrentStep.type == AI_CONTROLLER_STEP_TARGET
+                 || sCurrentStep.type == AI_CONTROLLER_STEP_WAYPOINT)
                 && sTargetResult == AI_TARGET_TRACKING) {
                 sTargetResult = AI_TARGET_TIMEOUT;
             }

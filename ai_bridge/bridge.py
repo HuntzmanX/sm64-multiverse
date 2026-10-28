@@ -28,8 +28,16 @@ from feedback import (
 from memory import (
     TECHNIQUE_CATALOG,
     find_locked_technique,
+    find_landmark,
+    find_landmark_in_scene,
+    forget_landmark,
+    landmark_prompt_state,
+    landmark_summary,
     load_memory,
     memory_summary,
+    parse_landmark_command,
+    remember_landmark,
+    rename_landmark,
     save_memory,
     technique_prompt_state,
     unlock_seen_techniques,
@@ -51,7 +59,7 @@ ROOT = Path(__file__).resolve().parent.parent
 class ControlStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["input", "wait", "say", "target"]
+    type: Literal["input", "wait", "say", "target", "waypoint", "camera"]
     intent: str = Field(min_length=1, max_length=80)
     stick_x: int = Field(ge=-80, le=80)
     stick_y: int = Field(ge=-80, le=80)
@@ -64,6 +72,7 @@ class ControlStep(BaseModel):
     target_mode: Literal["none", "toward", "away"]
     speed: int = Field(ge=0, le=80)
     stop_distance: int = Field(ge=0, le=8000)
+    destination: str = Field(max_length=40)
 
     @model_validator(mode="after")
     def validate_step(self) -> "ControlStep":
@@ -80,13 +89,27 @@ class ControlStep(BaseModel):
                 raise ValueError("target steps use neutral manual stick values")
             if self.target_id == 0 or self.target_mode == "none" or self.speed == 0:
                 raise ValueError("target steps require an ID, direction, and speed")
+            if self.destination:
+                raise ValueError("target steps do not name a landmark")
+        elif self.type in {"waypoint", "camera"}:
+            if self.stick_x != 0 or self.stick_y != 0 or self.buttons:
+                raise ValueError("waypoint and camera steps use neutral manual controls")
+            if self.target_id != 0 or self.target_mode != "none":
+                raise ValueError("waypoint and camera steps do not use object targets")
+            if self.speed == 0 or self.stop_distance == 0:
+                raise ValueError("waypoint and camera steps require speed and stop distance")
+            if self.type == "waypoint" and not self.destination.strip():
+                raise ValueError("waypoint steps require a saved landmark name")
+            if self.type == "camera" and self.destination:
+                raise ValueError("camera steps do not name a landmark")
         elif (
             self.target_id != 0
             or self.target_mode != "none"
             or self.speed != 0
             or self.stop_distance != 0
+            or self.destination
         ):
-            raise ValueError("only target steps may contain target controls")
+            raise ValueError("only destination steps may contain target controls")
         return self
 
 
@@ -135,9 +158,10 @@ dry narration of the controller plan. Examples: a tiny forward adjustment normal
 a dangerous enemy might earn "Okie-dokie! Mario's-a got this!"; an obviously reckless jump might earn
 "Mamma mia! This is-a terrible idea!" Explicit player-requested wording takes priority over this personality.
 
-Put the spoken words in text. Set text to an empty string for input, wait, and target steps.
+Put the spoken words in text. Set text to an empty string for input, wait, target, waypoint, and camera steps.
 Give every step a short intent describing what it does. For input, wait, and say steps set
-target_id=0, target_mode=none, speed=0, and stop_distance=0.
+target_id=0, target_mode=none, speed=0, stop_distance=0, and destination to an empty string.
+For target steps also set destination to an empty string.
 
 Keep plans short and literal. Do not silently improve ambiguous instructions: choose a defensible
 interpretation and describe it in the interpretation field. Do not pretend to know geometry or
@@ -197,6 +221,21 @@ and check its requirements rather than improvising different timing. The bridge 
 locked technique names. Literal low-level instructions such as holding crouch and then jumping are
 still valid and may cause Mario to discover a move, but do not rename them as a locked technique or
 claim discovery yourself; the game detects the real Mario action and records it authoritatively.
+
+The state may include mario_memory.known_landmarks. Use type=waypoint to travel to a saved landmark
+only when its scene_matches value is true. Put its exact name in destination, use speed 50-80,
+stop_distance near its saved radius (normally 150-250), neutral manual controls, target_id=0, and
+target_mode=none. The bridge resolves the name to trusted saved coordinates; never copy or invent
+coordinates yourself. If the landmark belongs to another scene, explain that Mario remembers it but
+does not yet know a route there.
+
+The camera field describes the human spectator's viewpoint, including its live world position,
+focus, mode, horizontal distance, and height relative to Mario. Use type=camera for requests such as
+"walk towards me", "come here", or "stand under the camera". This target follows the camera's live
+horizontal X/Z position every frame. Use speed 40-70 and 150-300 stop distance for approaching the
+viewer; use roughly 40-100 for standing directly underneath. Camera steps use neutral manual
+controls, target_id=0, target_mode=none, and an empty destination. In Follow mode the camera itself
+moves with Mario, so mention that exact convergence may be impossible if the target keeps receding.
 """
 
 MAX_CONTROL_CYCLES = 8
@@ -270,6 +309,7 @@ def print_help() -> None:
     print("  <instruction>  Ask Mario to perform a controller sequence")
     print("  /status        Show the game bridge status and latest position")
     print("  /moves         List Mario's learned advanced techniques")
+    print("  /places        List Mario's remembered landmarks")
     print("  /help          Show this help")
     print("  /quit          Stop the companion")
 
@@ -345,6 +385,7 @@ def local_say_step(text: str) -> ControlStep:
         target_mode="none",
         speed=0,
         stop_distance=0,
+        destination="",
     )
 
 
@@ -360,6 +401,61 @@ def send_local_speech(args: argparse.Namespace, text: str) -> str:
     return result
 
 
+def handle_landmark_command(
+    args: argparse.Namespace, memory: dict, command: str, state: dict
+) -> bool:
+    operation = parse_landmark_command(command)
+    if operation is None:
+        return False
+
+    action = operation["operation"]
+    try:
+        if action == "list":
+            summary = landmark_summary(memory)
+            print(summary)
+            names = [
+                item["name"]
+                for item in landmark_prompt_state(memory, state)
+                if isinstance(item.get("name"), str)
+            ]
+            reply = (
+                "I don't remember any places yet!"
+                if not names
+                else "I remember " + ", ".join(names) + "."
+            )
+            send_local_speech(args, reply[:80])
+            return True
+
+        name = operation["name"]
+        if action == "remember":
+            record = remember_landmark(memory, name, state)
+            reply = f"Okie-dokie! I'll remember {record['name']}!"
+            print(f"Remembered landmark: {record['name']}")
+        elif action == "update":
+            existing = find_landmark(memory, name)
+            if existing is None:
+                raise ValueError(f"Mario does not remember {name}")
+            record = remember_landmark(memory, existing["name"], state)
+            reply = f"Got it! {record['name']} is-a here now!"
+            print(f"Updated landmark: {record['name']}")
+        elif action == "rename":
+            record = rename_landmark(memory, name, operation["new_name"])
+            reply = f"Okie-dokie! I'll call it {record['name']}!"
+            print(f"Renamed landmark to: {record['name']}")
+        elif action == "forget":
+            record = forget_landmark(memory, name)
+            reply = f"Mamma mia... I forgot {record['name']}!"
+            print(f"Forgot landmark: {record['name']}")
+        else:
+            return False
+        save_memory(args.memory_file, memory)
+        send_local_speech(args, reply[:80])
+    except ValueError as exc:
+        print(f"Landmark command failed: {exc}")
+        send_local_speech(args, "I don't remember-a that place!")
+    return True
+
+
 def main() -> int:
     args = parse_args()
     if not os.environ.get("OPENAI_API_KEY"):
@@ -372,6 +468,7 @@ def main() -> int:
     print(f"Game runtime: {args.command_file.parent}")
     print(f"Mario memory: {args.memory_file}")
     print(f"Memory: {memory_summary(mario_memory)}")
+    print(landmark_summary(mario_memory))
     print("Enter a command here, or press Tab in-game. Use /help for bridge commands.")
     terminal_commands: queue.Queue[str | None] = queue.Queue()
     threading.Thread(
@@ -399,6 +496,17 @@ def main() -> int:
             continue
         if command.lower() in {"/moves", "/memory"}:
             print(memory_summary(mario_memory))
+            print(landmark_summary(mario_memory))
+            continue
+
+        if command.lower() == "/places":
+            print(landmark_summary(mario_memory))
+            continue
+
+        current_state = read_state(args.state_file)
+        if handle_landmark_command(
+            args, mario_memory, command, current_state
+        ):
             continue
 
         locked_technique = find_locked_technique(command, mario_memory)
@@ -419,7 +527,8 @@ def main() -> int:
                 planning_state = dict(before_state)
                 planning_state["instruction_memory"] = instruction_memory
                 planning_state["mario_memory"] = {
-                    "known_techniques": technique_prompt_state(mario_memory)
+                    "known_techniques": technique_prompt_state(mario_memory),
+                    "known_landmarks": landmark_prompt_state(mario_memory, before_state),
                 }
                 write_packet(args.command_file, build_status_packet("THINKING"))
                 plan = request_plan(
@@ -459,6 +568,9 @@ def main() -> int:
                 packet = build_plan_packet(
                     plan.steps,
                     reference_camera_yaw=(camera_yaw if isinstance(camera_yaw, int) else None),
+                    landmark_lookup=lambda name: find_landmark_in_scene(
+                        mario_memory, name, before_state
+                    ),
                 )
                 total_frames = sum(step.frames for step in plan.steps)
 
@@ -473,6 +585,10 @@ def main() -> int:
                         )
                     if step.type == "say":
                         print(f"     Mario says: {step.text}")
+                    if step.type == "waypoint":
+                        print(f"     toward saved landmark: {step.destination}")
+                    if step.type == "camera":
+                        print("     toward the live spectator camera")
                 print(f"Queued {len(plan.steps)} steps ({total_frames} frames).")
 
                 previous_status_mtime = status_mtime(args.status_file)

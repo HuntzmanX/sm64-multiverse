@@ -62,7 +62,11 @@ struct AiBridgeStep {
     s16 targetId;
     s8 targetDirection;
     u8 targetSpeed;
+    u8 waypointMode;
     u16 stopDistance;
+    f32 waypointX;
+    f32 waypointY;
+    f32 waypointZ;
     u16 buttons;
     u16 frames;
     char text[AI_BRIDGE_DIALOG_ASCII_LENGTH + 1];
@@ -73,6 +77,7 @@ enum AiBridgeStepType {
     AI_BRIDGE_STEP_WAIT,
     AI_BRIDGE_STEP_SAY,
     AI_BRIDGE_STEP_TARGET,
+    AI_BRIDGE_STEP_WAYPOINT,
 };
 
 struct AiBridgeNearbyObject {
@@ -243,6 +248,16 @@ static void ai_bridge_write_techniques(FILE *file) {
         first = FALSE;
     }
     fprintf(file, "],\n");
+}
+
+static const char *ai_bridge_camera_mode_text(void) {
+    if (!ai_freecam_is_enabled()) return "vanilla";
+    switch (ai_freecam_get_mode()) {
+        case AI_CAMERA_MODE_FOCUS: return "focus";
+        case AI_CAMERA_MODE_FOLLOW: return "follow";
+        case AI_CAMERA_MODE_FIRST_PERSON: return "first_person";
+        default: return "free";
+    }
 }
 
 static const char *ai_bridge_exclamation_box_type(s32 contents) {
@@ -458,6 +473,12 @@ static void ai_bridge_describe_step(const struct AiControllerDisplayStep *step,
         return;
     }
 
+    if (step->type == AI_CONTROLLER_DISPLAY_WAYPOINT) {
+        snprintf(text, capacity, "%sTO %s", prefix,
+                 step->waypointMode == AI_WAYPOINT_CAMERA ? "CAMERA" : "LANDMARK");
+        return;
+    }
+
     if (step->stickX == 0 && step->stickY == 0) {
         if (step->buttons == 0) {
             snprintf(text, capacity, "%s%s", prefix,
@@ -652,6 +673,10 @@ static s32 ai_bridge_load_packet(void) {
         s32 targetDirection;
         s32 targetSpeed;
         s32 stopDistance;
+        s32 waypointMode;
+        f32 waypointX;
+        f32 waypointY;
+        f32 waypointZ;
         char statusText[32];
         char encodedText[(AI_BRIDGE_DIALOG_ASCII_LENGTH * 2) + 1];
 
@@ -684,6 +709,51 @@ static s32 ai_bridge_load_packet(void) {
             steps[stepCount].targetSpeed = targetSpeed;
             steps[stepCount].stopDistance = stopDistance;
             steps[stepCount].buttons = buttons;
+            steps[stepCount].frames = frames;
+            steps[stepCount].text[0] = '\0';
+            stepCount++;
+            totalFrames += frames;
+        } else if (sscanf(line, "WAYPOINT %f %f %f %d %d %d", &waypointX,
+                          &waypointY, &waypointZ, &targetSpeed, &frames,
+                          &stopDistance) == 6) {
+            if (stepCount >= AI_BRIDGE_MAX_PACKET_STEPS || waypointX < -32768.0f
+                || waypointX > 32767.0f || waypointY < -32768.0f
+                || waypointY > 32767.0f || waypointZ < -32768.0f
+                || waypointZ > 32767.0f || targetSpeed < 1 || targetSpeed > 80
+                || frames < 1 || frames > AI_BRIDGE_MAX_STEP_FRAMES
+                || stopDistance < 1 || stopDistance > 8000
+                || totalFrames + frames > AI_BRIDGE_MAX_TOTAL_FRAMES) {
+                valid = FALSE;
+                break;
+            }
+            steps[stepCount].type = AI_BRIDGE_STEP_WAYPOINT;
+            steps[stepCount].waypointMode = AI_WAYPOINT_STATIC;
+            steps[stepCount].waypointX = waypointX;
+            steps[stepCount].waypointY = waypointY;
+            steps[stepCount].waypointZ = waypointZ;
+            steps[stepCount].targetSpeed = targetSpeed;
+            steps[stepCount].stopDistance = stopDistance;
+            steps[stepCount].frames = frames;
+            steps[stepCount].text[0] = '\0';
+            stepCount++;
+            totalFrames += frames;
+        } else if (sscanf(line, "CAMERA %d %d %d", &targetSpeed, &frames,
+                          &stopDistance) == 3) {
+            if (stepCount >= AI_BRIDGE_MAX_PACKET_STEPS || targetSpeed < 1
+                || targetSpeed > 80 || frames < 1 || frames > AI_BRIDGE_MAX_STEP_FRAMES
+                || stopDistance < 1 || stopDistance > 8000
+                || totalFrames + frames > AI_BRIDGE_MAX_TOTAL_FRAMES) {
+                valid = FALSE;
+                break;
+            }
+            waypointMode = AI_WAYPOINT_CAMERA;
+            steps[stepCount].type = AI_BRIDGE_STEP_WAYPOINT;
+            steps[stepCount].waypointMode = waypointMode;
+            steps[stepCount].waypointX = 0.0f;
+            steps[stepCount].waypointY = 0.0f;
+            steps[stepCount].waypointZ = 0.0f;
+            steps[stepCount].targetSpeed = targetSpeed;
+            steps[stepCount].stopDistance = stopDistance;
             steps[stepCount].frames = frames;
             steps[stepCount].text[0] = '\0';
             stepCount++;
@@ -784,6 +854,15 @@ static s32 ai_bridge_load_packet(void) {
                 ai_bridge_set_status(AI_BRIDGE_ERROR);
                 return TRUE;
             }
+        } else if (steps[i].type == AI_BRIDGE_STEP_WAYPOINT) {
+            if (!ai_controller_enqueue_waypoint(steps[i].waypointX, steps[i].waypointY,
+                                                steps[i].waypointZ, steps[i].targetSpeed,
+                                                steps[i].frames, steps[i].stopDistance,
+                                                steps[i].waypointMode)) {
+                ai_controller_clear();
+                ai_bridge_set_status(AI_BRIDGE_ERROR);
+                return TRUE;
+            }
         } else if (!ai_controller_enqueue(steps[i].stickX, steps[i].stickY,
                                           steps[i].buttons, steps[i].frames)) {
             ai_controller_clear();
@@ -806,6 +885,13 @@ static void ai_bridge_write_telemetry(void) {
     s32 floorType;
     f32 floorNormalY;
     s16 cameraYaw = 0;
+    f32 cameraX = 0.0f;
+    f32 cameraY = 0.0f;
+    f32 cameraZ = 0.0f;
+    f32 cameraFocusX = 0.0f;
+    f32 cameraFocusY = 0.0f;
+    f32 cameraFocusZ = 0.0f;
+    f32 cameraHorizontalDistance = 0.0f;
     struct AiBridgeNearbyObject nearby[AI_BRIDGE_MAX_NEARBY_OBJECTS];
     s32 nearbyCount = 0;
     s32 listIndex;
@@ -826,6 +912,15 @@ static void ai_bridge_write_telemetry(void) {
     floorNormalY = gMarioState->floor != NULL ? gMarioState->floor->normal.y : 0.0f;
     if (gCamera != NULL) {
         cameraYaw = gCamera->yaw;
+        cameraX = gCamera->pos[0];
+        cameraY = gCamera->pos[1];
+        cameraZ = gCamera->pos[2];
+        cameraFocusX = gCamera->focus[0];
+        cameraFocusY = gCamera->focus[1];
+        cameraFocusZ = gCamera->focus[2];
+        cameraHorizontalDistance = sqrtf(
+            (cameraX - gMarioState->pos[0]) * (cameraX - gMarioState->pos[0])
+            + (cameraZ - gMarioState->pos[2]) * (cameraZ - gMarioState->pos[2]));
     }
 
     for (listIndex = 0; listIndex < NUM_OBJ_LISTS; listIndex++) {
@@ -871,6 +966,10 @@ static void ai_bridge_write_telemetry(void) {
             "  \"forward_speed\": %.2f,\n"
             "  \"facing_yaw\": %d,\n"
             "  \"camera_yaw\": %d,\n"
+            "  \"camera\": {\"mode\": \"%s\", "
+            "\"position\": {\"x\": %.2f, \"y\": %.2f, \"z\": %.2f}, "
+            "\"focus\": {\"x\": %.2f, \"y\": %.2f, \"z\": %.2f}, "
+            "\"horizontal_distance\": %.2f, \"height_delta\": %.2f},\n"
             "  \"action\": %u,\n"
             "  \"grounded\": %s,\n"
             "  \"swimming\": %s,\n"
@@ -887,7 +986,10 @@ static void ai_bridge_write_telemetry(void) {
             gCurrLevelNum, gCurrAreaIndex, gMarioCurrentRoom,
             gMarioState->pos[0], gMarioState->pos[1], gMarioState->pos[2],
             gMarioState->vel[0], gMarioState->vel[1], gMarioState->vel[2],
-            gMarioState->forwardVel, gMarioState->faceAngle[1], cameraYaw, gMarioState->action,
+            gMarioState->forwardVel, gMarioState->faceAngle[1], cameraYaw,
+            ai_bridge_camera_mode_text(), cameraX, cameraY, cameraZ,
+            cameraFocusX, cameraFocusY, cameraFocusZ, cameraHorizontalDistance,
+            cameraY - gMarioState->pos[1], gMarioState->action,
             grounded ? "true" : "false", swimming ? "true" : "false",
             cutscene ? "true" : "false",
             get_dialog_id() != DIALOG_NONE ? "true" : "false", get_dialog_id(),

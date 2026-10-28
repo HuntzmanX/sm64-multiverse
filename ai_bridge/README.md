@@ -46,6 +46,8 @@ runs inside the game process.
 - In-game command entry with safe replacement of an active instruction.
 - Native-looking Mario speech, reactive personality, and post-dialog remarks.
 - Persistent Mario memory with locked, player-teachable advanced techniques.
+- Player-named landmarks with fixed-coordinate waypoint navigation.
+- Live awareness of the spectator camera as a movement destination.
 - Automated sign and NPC dialog advancement.
 - Free, Focus, Follow, and First-Person spectator camera modes.
 - Native mouse file selection plus wheel-and-click control for list and carousel menus.
@@ -222,6 +224,17 @@ current action, speed, timing, and terrain.
 - `Go to the cannon, but stop just outside it.`
 - `Find the nearest star.`
 
+### Learned places and the camera
+
+- `Remember this place as The Ramp.`
+- `Go to The Ramp.`
+- `Update The Ramp to here.`
+- `Rename The Ramp to Wooden Ramp.`
+- `Forget Wooden Ramp.`
+- `What places do you remember?`
+- `Walk towards me.`
+- `Come and stand under the camera.`
+
 ### Conditional and multi-stage behaviour
 
 - `Run to that red coin, but if a Goomba gets near you, run away from it.`
@@ -247,7 +260,7 @@ remarks are contextual and generic rather than true readings or quotations.
 
 ## Available AI actions
 
-Natural language is converted into four validated step types:
+Natural language is converted into six validated step types:
 
 | Step | Purpose | Rules |
 |---|---|---|
@@ -255,6 +268,8 @@ Natural language is converted into four validated step types:
 | `wait` | Hold neutral controls. | No stick or buttons. |
 | `say` | Show Mario speech while holding neutral controls. | At most one per plan; must be first; maximum 80 ASCII characters. |
 | `target` | Steer toward or away from a recognised object by stable ID. | Speed 1-80; stop distance 0-8000; live steering. |
+| `waypoint` | Steer toward a remembered landmark's trusted coordinates. | Landmark must exist in the current level, area, and room. |
+| `camera` | Steer toward the live spectator-camera X/Z position. | Speed 1-80; normally stop 40-300 units away. |
 
 The game runs at 30 frames per second. A step can last 1-300 frames, a plan can
 contain up to 32 steps, and one plan can request at most 900 total frames.
@@ -453,7 +468,37 @@ Knowledge is stored in `.sm64-ai-memory.json` at the repository root, outside
 the generated build directory, so it survives normal rebuilds and
 `make distclean`. Writes are atomic and the previous valid version is retained
 as `.sm64-ai-memory.json.bak`. The versioned format already reserves landmarks
-and routes for the next memory update.
+and routes; landmarks are now active and route learning remains the next stage.
+
+### Remembered landmarks
+
+Landmark teaching commands are handled locally without an API request. Saving a
+place records Mario's level, area, collision room, position, facing direction,
+arrival radius, display name, and timestamps. Names are case-insensitive and
+may contain up to 40 printable ASCII characters.
+
+When a matching landmark is requested in the current scene, the companion emits
+a `waypoint` step. The game resolves its saved coordinates locally and steers
+toward them every frame. The AI never supplies arbitrary coordinates. A
+landmark in another room or area remains visible to Mario's memory, but he
+honestly reports that he does not yet know a route there.
+
+Waypoint travel currently uses direct horizontal steering. It detects arrival,
+timeouts, and becoming stationary, but it cannot plan around walls or pits.
+Route learning will later connect landmarks across doors, pipes, and paintings.
+
+### Camera awareness
+
+Telemetry includes the spectator camera's world position, focus point, mode,
+horizontal distance, and height relative to Mario. A `camera` action follows
+the live horizontal camera position, allowing commands such as `Walk towards
+me` and `Stand under the camera`. Moving Free or Focus camera during the action
+updates Mario's target immediately.
+
+Because Follow mode moves the camera with Mario, its target can recede at the
+same speed he approaches it. The planner is warned about this and the normal
+timeout/stuck protections still apply. First-Person camera is already located
+at Mario, so an under-camera request normally completes immediately.
 
 ### Door completion memory
 
@@ -519,6 +564,7 @@ The game refreshes `.sm64-ai-state.json` about twice per second.
 | `forward_speed` | Current forward velocity. |
 | `facing_yaw` | Signed 16-bit facing angle. |
 | `camera_yaw` | Angle used to interpret camera-relative controls. |
+| `camera` | Spectator mode, live position/focus, horizontal distance, and height delta. |
 | `action` | Raw Mario action value. |
 | `grounded` | Outside air/swimming/metal-water actions. |
 | `swimming` | In swimming or metal-water movement. |
@@ -580,6 +626,7 @@ On displays wider than 3:2, a translucent panel uses the right side of the
   held buttons appended (`A`, `B`, `Z`, `R`, `CU`, `CD`, `CL`, `CR`).
 - Live object movement names the recognised target, such as `TO RED COIN` or
   `FLEE GOOMBA`; if it has disappeared, the sidebar falls back to its stable ID.
+- Saved and camera destinations appear as `TO LANDMARK` and `TO CAMERA`.
 - Neutral steps are shown as `WAIT`; active custom speech is shown as `SAY`.
 
 The panel reads the same queue that drives Mario, rather than maintaining a
@@ -591,7 +638,8 @@ separate visual copy, so completed and aborted actions disappear immediately.
 |---|---|
 | Any other text | Send a natural-language instruction. |
 | `/status` | Show bridge status, latest position, and up to eight nearby objects. |
-| `/moves` or `/memory` | List Mario's persistently learned techniques. |
+| `/moves` or `/memory` | List Mario's learned techniques and remembered landmarks. |
+| `/places` | List Mario's remembered landmarks. |
 | `/help` | Print the terminal command list. |
 | `/quit` or `/exit` | Stop the Python companion. |
 
@@ -619,6 +667,7 @@ The Python command-line options are:
 --state-file PATH
 --status-file PATH
 --request-file PATH
+--memory-file PATH
 ```
 
 View generated help with:
@@ -650,12 +699,16 @@ SAY <frames> <uppercase-hex-encoded-ASCII>
 INPUT <stick-x> <stick-y> <button-mask> <frames>
 WAIT <frames>
 TARGET <object-id> <direction> <speed> <button-mask> <frames> <stop-distance>
+WAYPOINT <x> <y> <z> <speed> <frames> <stop-distance>
+CAMERA <speed> <frames> <stop-distance>
 END
 ```
 
 - `REFERENCE_YAW` is optional and appears before steps.
 - `SAY` is optional, unique, and must be the first step.
 - Target direction is `1` for toward or `-1` for away.
+- `WAYPOINT` coordinates come only from locally saved landmark memory.
+- `CAMERA` resolves the spectator camera's current horizontal position each frame.
 - Button masks use the N64 bits exposed by `ai_bridge/protocol.py`.
 - A status packet contains `STATUS READY`, `STATUS THINKING`, or `STATUS ERROR`
   instead of control steps.
@@ -674,6 +727,8 @@ its limits, so malformed packets become Error rather than partially executing.
   dialog text, or names for objects outside the recognised list.
 - Target steering takes a direct horizontal route. It does not pathfind around
   walls, pits, slopes, or platforms.
+- Landmark navigation currently requires the saved level, area, and collision
+  room to match Mario's current scene; multi-room route learning comes later.
 - Stick-only movement can end early after Mario remains stationary. Waits,
   releases, and button-bearing inputs keep their requested timing.
 - Losing a target or becoming stuck aborts remaining queued steps so the next

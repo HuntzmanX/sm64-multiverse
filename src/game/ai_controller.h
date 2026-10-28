@@ -7,6 +7,9 @@
 #define AI_CONTROLLER_QUEUE_CAPACITY 64
 #define AI_CONTROLLER_DISPLAY_INPUT 0
 #define AI_CONTROLLER_DISPLAY_TARGET 1
+#define AI_CONTROLLER_DISPLAY_WAYPOINT 2
+#define AI_WAYPOINT_STATIC 0
+#define AI_WAYPOINT_CAMERA 1
 
 struct Object;
 
@@ -17,6 +20,7 @@ struct AiControllerDisplayStep {
     s16 targetId;
     s8 targetDirection;
     u8 targetSpeed;
+    u8 waypointMode;
     u16 buttons;
     u16 frames;
 };
@@ -35,6 +39,10 @@ s32 ai_controller_enqueue(s8 stickX, s8 stickY, u16 buttons, u16 frames);
 /** Track an object-pool ID live, moving toward (1) or away (-1) from it. */
 s32 ai_controller_enqueue_target(s16 targetId, s8 direction, u8 speed, u16 buttons,
                                  u16 frames, u16 stopDistance);
+
+/** Steer toward fixed world coordinates or the live spectator-camera position. */
+s32 ai_controller_enqueue_waypoint(f32 x, f32 y, f32 z, u8 speed, u16 frames,
+                                   u16 stopDistance, u8 waypointMode);
 
 /** Return a stable, protocol-safe ID for a live object. */
 s16 ai_controller_object_id(struct Object *object);

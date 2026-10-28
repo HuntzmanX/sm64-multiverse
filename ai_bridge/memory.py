@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
@@ -137,6 +138,215 @@ def save_memory(path: Path, memory: dict[str, Any]) -> None:
 
 def technique_memory(memory: dict[str, Any]) -> dict[str, Any]:
     return memory["profiles"][PROFILE_NAME]["techniques"]
+
+
+def landmark_memory(memory: dict[str, Any]) -> dict[str, Any]:
+    return memory["profiles"][PROFILE_NAME]["landmarks"]
+
+
+def normalize_landmark_name(name: str) -> str:
+    cleaned = " ".join(name.strip().strip("\"'.,!?").split())
+    if not 1 <= len(cleaned) <= 40 or not any(character.isalnum() for character in cleaned):
+        raise ValueError("Landmark names must contain 1-40 useful characters")
+    if not cleaned.isascii():
+        raise ValueError("Landmark names currently use printable ASCII")
+    return cleaned
+
+
+def landmark_key(name: str) -> str:
+    return normalize_landmark_name(name).casefold()
+
+
+def parse_landmark_command(command: str) -> dict[str, str] | None:
+    text = command.strip()
+    patterns = [
+        (
+            "rename",
+            r"^rename\s+(.+?)\s+to\s+(.+?)[.!?]*$",
+        ),
+        (
+            "update",
+            r"^update\s+(.+?)\s+to\s+(?:here|this place|this spot)[.!?]*$",
+        ),
+        (
+            "forget",
+            r"^forget\s+(.+?)[.!?]*$",
+        ),
+        (
+            "remember",
+            r"^remember(?:\s+that)?\s+(?:this place|this spot|this|here)\s+"
+            r"(?:is|as|called)\s+(.+?)[.!?]*$",
+        ),
+        (
+            "remember",
+            r"^call\s+(?:this place|this spot|this|here)\s+(.+?)[.!?]*$",
+        ),
+    ]
+    for operation, pattern in patterns:
+        match = re.match(pattern, text, flags=re.IGNORECASE)
+        if match is None:
+            continue
+        try:
+            name = normalize_landmark_name(match.group(1))
+            result = {"operation": operation, "name": name}
+            if operation == "rename":
+                result["new_name"] = normalize_landmark_name(match.group(2))
+            return result
+        except ValueError:
+            return None
+
+    if re.match(
+        r"^(?:what|which)\s+(?:places|locations|landmarks)\s+do\s+you\s+remember[?!.]*$",
+        text,
+        flags=re.IGNORECASE,
+    ) or re.match(
+        r"^(?:list|show)(?:\s+me)?\s+(?:your\s+)?(?:places|locations|landmarks)[?!.]*$",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        return {"operation": "list", "name": ""}
+    return None
+
+
+def _state_location(state: dict) -> dict[str, Any]:
+    position = state.get("position")
+    if not isinstance(position, dict):
+        raise ValueError("Mario's position is not available")
+    try:
+        x = float(position["x"])
+        y = float(position["y"])
+        z = float(position["z"])
+        level = int(state["level"])
+        area = int(state["area"])
+        room = int(state.get("room", 0))
+        facing_yaw = int(state.get("facing_yaw", 0))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("Mario's current scene is not available") from exc
+    return {
+        "level": level,
+        "area": area,
+        "room": room,
+        "position": {"x": x, "y": y, "z": z},
+        "facing_yaw": facing_yaw,
+    }
+
+
+def remember_landmark(memory: dict[str, Any], name: str, state: dict) -> dict[str, Any]:
+    display_name = normalize_landmark_name(name)
+    key = landmark_key(display_name)
+    location = _state_location(state)
+    existing = landmark_memory(memory).get(key)
+    now = datetime.now(timezone.utc).isoformat()
+    record = {
+        "name": display_name,
+        "aliases": existing.get("aliases", []) if isinstance(existing, dict) else [],
+        **location,
+        "radius": 200,
+        "created_at": existing.get("created_at", now) if isinstance(existing, dict) else now,
+        "updated_at": now,
+    }
+    landmark_memory(memory)[key] = record
+    return record
+
+
+def find_landmark(memory: dict[str, Any], name: str) -> dict[str, Any] | None:
+    try:
+        key = landmark_key(name)
+    except ValueError:
+        return None
+    direct = landmark_memory(memory).get(key)
+    if isinstance(direct, dict):
+        return direct
+    for record in landmark_memory(memory).values():
+        if not isinstance(record, dict):
+            continue
+        aliases = record.get("aliases", [])
+        if any(isinstance(alias, str) and alias.casefold() == key for alias in aliases):
+            return record
+    return None
+
+
+def landmark_scene_matches(record: dict[str, Any], state: dict) -> bool:
+    if record.get("level") != state.get("level") or record.get("area") != state.get("area"):
+        return False
+    saved_room = record.get("room", 0)
+    current_room = state.get("room", 0)
+    return saved_room == 0 or current_room == 0 or saved_room == current_room
+
+
+def find_landmark_in_scene(
+    memory: dict[str, Any], name: str, state: dict
+) -> dict[str, Any] | None:
+    record = find_landmark(memory, name)
+    return record if record is not None and landmark_scene_matches(record, state) else None
+
+
+def rename_landmark(memory: dict[str, Any], name: str, new_name: str) -> dict[str, Any]:
+    record = find_landmark(memory, name)
+    if record is None:
+        raise ValueError(f"Mario does not remember {normalize_landmark_name(name)}")
+    old_key = next(
+        key for key, value in landmark_memory(memory).items() if value is record
+    )
+    display_name = normalize_landmark_name(new_name)
+    new_key = landmark_key(display_name)
+    if new_key != old_key and new_key in landmark_memory(memory):
+        raise ValueError(f"Mario already remembers a place called {display_name}")
+    del landmark_memory(memory)[old_key]
+    record["name"] = display_name
+    record["updated_at"] = datetime.now(timezone.utc).isoformat()
+    landmark_memory(memory)[new_key] = record
+    return record
+
+
+def forget_landmark(memory: dict[str, Any], name: str) -> dict[str, Any]:
+    record = find_landmark(memory, name)
+    if record is None:
+        raise ValueError(f"Mario does not remember {normalize_landmark_name(name)}")
+    key = next(key for key, value in landmark_memory(memory).items() if value is record)
+    del landmark_memory(memory)[key]
+    return record
+
+
+def landmark_prompt_state(memory: dict[str, Any], state: dict) -> list[dict[str, Any]]:
+    mario_position = state.get("position")
+    result: list[dict[str, Any]] = []
+    for record in landmark_memory(memory).values():
+        if not isinstance(record, dict):
+            continue
+        item = {
+            "name": record.get("name"),
+            "level": record.get("level"),
+            "area": record.get("area"),
+            "room": record.get("room"),
+            "position": record.get("position"),
+            "radius": record.get("radius", 200),
+            "scene_matches": landmark_scene_matches(record, state),
+        }
+        saved_position = record.get("position")
+        if isinstance(mario_position, dict) and isinstance(saved_position, dict):
+            try:
+                dx = float(saved_position["x"]) - float(mario_position["x"])
+                dz = float(saved_position["z"]) - float(mario_position["z"])
+                item["horizontal_distance"] = round(math.hypot(dx, dz), 1)
+                item["height_delta"] = round(
+                    float(saved_position["y"]) - float(mario_position["y"]), 1
+                )
+            except (KeyError, TypeError, ValueError):
+                pass
+        result.append(item)
+    return result
+
+
+def landmark_summary(memory: dict[str, Any]) -> str:
+    names = [
+        record.get("name", "Unnamed")
+        for record in landmark_memory(memory).values()
+        if isinstance(record, dict)
+    ]
+    if not names:
+        return "Mario remembers no landmarks."
+    return "Mario remembers: " + ", ".join(names) + "."
 
 
 def learned_technique_ids(memory: dict[str, Any]) -> set[str]:

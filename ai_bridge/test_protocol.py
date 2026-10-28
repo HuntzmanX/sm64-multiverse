@@ -18,6 +18,7 @@ class Step:
     target_mode: str = "none"
     speed: int = 0
     stop_distance: int = 0
+    destination: str = ""
 
 
 class ProtocolTests(unittest.TestCase):
@@ -75,6 +76,28 @@ class ProtocolTests(unittest.TestCase):
             ]
         )
         self.assertEqual(packet, "SM64AI1\nTARGET 17 1 70 0 180 150\nEND\n")
+
+    def test_waypoint_resolves_saved_landmark_coordinates(self) -> None:
+        step = Step(
+            "waypoint", 240, speed=70, stop_distance=180, destination="The Ramp"
+        )
+        packet = build_plan_packet(
+            [step],
+            landmark_lookup=lambda name: {
+                "position": {"x": -820, "y": 740, "z": 1250}
+            }
+            if name == "The Ramp"
+            else None,
+        )
+        self.assertEqual(
+            packet, "SM64AI1\nWAYPOINT -820.00 740.00 1250.00 70 240 180\nEND\n"
+        )
+
+    def test_camera_step_tracks_live_camera(self) -> None:
+        packet = build_plan_packet(
+            [Step("camera", 180, speed=60, stop_distance=120)]
+        )
+        self.assertEqual(packet, "SM64AI1\nCAMERA 60 180 120\nEND\n")
 
     def test_total_duration_is_limited(self) -> None:
         with self.assertRaises(ValueError):

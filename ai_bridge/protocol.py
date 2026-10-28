@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import os
+import math
 from pathlib import Path
-from typing import Iterable, Protocol
+from typing import Any, Callable, Iterable, Protocol
 
 
 BUTTON_MASKS = {
@@ -28,6 +29,7 @@ class StepLike(Protocol):
     target_mode: str
     speed: int
     stop_distance: int
+    destination: str
 
 
 def encode_buttons(buttons: Iterable[str]) -> int:
@@ -41,7 +43,9 @@ def encode_buttons(buttons: Iterable[str]) -> int:
 
 
 def build_plan_packet(
-    steps: Iterable[StepLike], reference_camera_yaw: int | None = None
+    steps: Iterable[StepLike],
+    reference_camera_yaw: int | None = None,
+    landmark_lookup: Callable[[str], dict[str, Any] | None] | None = None,
 ) -> str:
     lines = ["SM64AI1"]
     if reference_camera_yaw is not None:
@@ -78,6 +82,38 @@ def build_plan_packet(
                 f"TARGET {step.target_id} {direction} {step.speed} "
                 f"{encode_buttons(step.buttons)} {step.frames} {step.stop_distance}"
             )
+        elif step.type == "waypoint":
+            destination = getattr(step, "destination", "").strip()
+            landmark = landmark_lookup(destination) if landmark_lookup is not None else None
+            if landmark is None:
+                raise ValueError(f"Unknown or unavailable landmark: {destination}")
+            position = landmark.get("position")
+            if not isinstance(position, dict):
+                raise ValueError(f"Landmark has no position: {destination}")
+            try:
+                x = float(position["x"])
+                y = float(position["y"])
+                z = float(position["z"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(f"Landmark has an invalid position: {destination}") from exc
+            if not all(math.isfinite(value) and -32768 <= value <= 32767 for value in (x, y, z)):
+                raise ValueError(f"Landmark position is outside SM64 world bounds: {destination}")
+            if step.stick_x != 0 or step.stick_y != 0 or step.buttons or step.text:
+                raise ValueError("Waypoint steps require neutral manual controls")
+            if not 1 <= step.speed <= 80 or not 1 <= step.stop_distance <= 8000:
+                raise ValueError("Waypoint speed or stop distance is invalid")
+            lines.append(
+                f"WAYPOINT {x:.2f} {y:.2f} {z:.2f} "
+                f"{step.speed} {step.frames} {step.stop_distance}"
+            )
+        elif step.type == "camera":
+            if step.stick_x != 0 or step.stick_y != 0 or step.buttons or step.text:
+                raise ValueError("Camera steps require neutral manual controls")
+            if getattr(step, "destination", ""):
+                raise ValueError("Camera steps do not name a landmark")
+            if not 1 <= step.speed <= 80 or not 1 <= step.stop_distance <= 8000:
+                raise ValueError("Camera speed or stop distance is invalid")
+            lines.append(f"CAMERA {step.speed} {step.frames} {step.stop_distance}")
         elif step.type == "say":
             if step.stick_x != 0 or step.stick_y != 0 or step.buttons:
                 raise ValueError("Wait and say steps must have neutral controls")

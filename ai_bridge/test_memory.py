@@ -8,9 +8,17 @@ from memory import (
     TECHNIQUE_CATALOG,
     default_memory,
     find_locked_technique,
+    find_landmark,
+    find_landmark_in_scene,
+    forget_landmark,
+    landmark_prompt_state,
+    landmark_summary,
     learned_technique_ids,
     load_memory,
     memory_summary,
+    parse_landmark_command,
+    remember_landmark,
+    rename_landmark,
     save_memory,
     technique_prompt_state,
     unlock_seen_techniques,
@@ -77,6 +85,67 @@ class MemoryTests(unittest.TestCase):
         self.assertEqual(
             set(TECHNIQUE_CATALOG),
             {"backflip", "side_flip", "long_jump", "slide_jump", "ground_pound", "dive"},
+        )
+
+    def test_landmark_teaching_commands_are_parsed(self) -> None:
+        self.assertEqual(
+            parse_landmark_command("Remember this is The Ramp"),
+            {"operation": "remember", "name": "The Ramp"},
+        )
+        self.assertEqual(
+            parse_landmark_command("Rename The Ramp to Wooden Ramp"),
+            {"operation": "rename", "name": "The Ramp", "new_name": "Wooden Ramp"},
+        )
+        self.assertEqual(
+            parse_landmark_command("Update Wooden Ramp to here"),
+            {"operation": "update", "name": "Wooden Ramp"},
+        )
+        self.assertEqual(
+            parse_landmark_command("What places do you remember?"),
+            {"operation": "list", "name": ""},
+        )
+
+    def test_landmark_can_be_saved_resolved_renamed_and_forgotten(self) -> None:
+        memory = default_memory()
+        state = {
+            "level": 9,
+            "area": 1,
+            "room": 0,
+            "facing_yaw": 123,
+            "position": {"x": -820, "y": 740, "z": 1250},
+        }
+        remember_landmark(memory, "The Ramp", state)
+        self.assertEqual(find_landmark(memory, "the ramp")["position"]["x"], -820.0)
+        self.assertIsNotNone(find_landmark_in_scene(memory, "The Ramp", state))
+        renamed = rename_landmark(memory, "The Ramp", "Wooden Ramp")
+        self.assertEqual(renamed["name"], "Wooden Ramp")
+        forgotten = forget_landmark(memory, "Wooden Ramp")
+        self.assertEqual(forgotten["name"], "Wooden Ramp")
+        self.assertEqual(landmark_summary(memory), "Mario remembers no landmarks.")
+
+    def test_landmark_scene_and_prompt_distance(self) -> None:
+        memory = default_memory()
+        saved_state = {
+            "level": 9,
+            "area": 1,
+            "room": 2,
+            "position": {"x": 300, "y": 100, "z": 400},
+        }
+        current_state = {
+            "level": 9,
+            "area": 1,
+            "room": 2,
+            "position": {"x": 0, "y": 50, "z": 0},
+        }
+        remember_landmark(memory, "Hill", saved_state)
+        prompt = landmark_prompt_state(memory, current_state)[0]
+        self.assertTrue(prompt["scene_matches"])
+        self.assertEqual(prompt["horizontal_distance"], 500.0)
+        self.assertEqual(prompt["height_delta"], 50.0)
+        self.assertIsNone(
+            find_landmark_in_scene(
+                memory, "Hill", current_state | {"room": 3}
+            )
         )
 
 
