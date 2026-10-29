@@ -1,3 +1,8 @@
+# AI NPC conversation branch
+
+This branch adds OpenAI conversations and actions for Toads and Bob-omb Buddies.
+See [AI_NPCS.md](AI_NPCS.md) for setup, controls, features and testing.
+
 # Super Mario 64 Port
 
 - This repo contains a full decompilation of Super Mario 64 (J), (U), (E), and (SH).

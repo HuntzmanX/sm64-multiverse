@@ -1,6 +1,7 @@
 #include <PR/ultratypes.h>
 
 #include "types.h"
+#include "ai_npc.h"
 #include "actors/common1.h"
 #include "actors/group12.h"
 #include "actors/group13.h"

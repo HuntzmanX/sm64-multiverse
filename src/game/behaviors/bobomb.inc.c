@@ -344,6 +344,7 @@ void bobomb_buddy_cannon_dialog(s16 dialogFirstText, s16 dialogSecondText) {
             break;
 
         case BOBOMB_BUDDY_CANNON_STOP_TALKING:
+            ai_npc_offer_reply(o);
             set_mario_npc_dialog(MARIO_DIALOG_STOP);
 
             o->activeFlags &= ~ACTIVE_FLAG_INITIATED_TIME_STOP;
@@ -363,6 +364,7 @@ void bobomb_buddy_act_talk(void) {
             case BOBOMB_BUDDY_ROLE_ADVICE:
                 if (cutscene_object_with_dialog(CUTSCENE_DIALOG, o, o->oBehParams2ndByte)
                     != BOBOMB_BUDDY_BP_STYPE_GENERIC) {
+                    ai_npc_offer_reply(o);
                     set_mario_npc_dialog(MARIO_DIALOG_STOP);
 
                     o->activeFlags &= ~ACTIVE_FLAG_INITIATED_TIME_STOP;
@@ -413,6 +415,7 @@ void bobomb_buddy_actions(void) {
 }
 
 void bhv_bobomb_buddy_loop(void) {
+    if (ai_npc_tick(o, 2)) return;
     bobomb_buddy_actions();
 
     curr_obj_random_blink(&o->oBobombBuddyBlinkTimer);

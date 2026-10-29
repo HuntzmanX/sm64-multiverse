@@ -1,6 +1,7 @@
 #include <ultra64.h>
 
 #include "sm64.h"
+#include "ai_npc.h"
 #include "gfx_dimensions.h"
 #include "audio/external.h"
 #include "buffers/buffers.h"
@@ -583,6 +584,9 @@ void read_controller_inputs(void) {
             controller->stickMag = 0;
         }
     }
+
+    ai_npc_update();
+    ai_npc_filter_controller();
 
     // For some reason, player 1's inputs are copied to player 3's port.
     // This potentially may have been a way the developers "recorded"

@@ -1,6 +1,7 @@
 #include <PR/ultratypes.h>
 
 #include "sm64.h"
+#include "ai_npc.h"
 #include "area.h"
 #include "audio/external.h"
 #include "behavior_actions.h"
@@ -125,6 +126,7 @@ static void toad_message_opaque(void) {
 static void toad_message_talking(void) {
     if (cur_obj_update_dialog_with_cutscene(MARIO_DIALOG_LOOK_DOWN, 
         DIALOG_FLAG_TURN_TO_MARIO, CUTSCENE_DIALOG, gCurrentObject->oToadMessageDialogId)) {
+        ai_npc_offer_reply(gCurrentObject);
         gCurrentObject->oToadMessageRecentlyTalked = TRUE;
         gCurrentObject->oToadMessageState = TOAD_MESSAGE_FADING;
         switch (gCurrentObject->oToadMessageDialogId) {
@@ -157,6 +159,7 @@ static void toad_message_fading(void) {
 }
 
 void bhv_toad_message_loop(void) {
+    if (ai_npc_tick(gCurrentObject, 1)) return;
     if (gCurrentObject->header.gfx.node.flags & GRAPH_RENDER_ACTIVE) {
         gCurrentObject->oInteractionSubtype = 0;
         switch (gCurrentObject->oToadMessageState) {

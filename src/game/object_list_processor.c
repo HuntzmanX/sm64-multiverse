@@ -1,6 +1,7 @@
 #include <PR/ultratypes.h>
 
 #include "sm64.h"
+#include "ai_npc.h"
 #include "area.h"
 #include "behavior_data.h"
 #include "camera.h"
@@ -529,6 +530,8 @@ void stub_obj_list_processor_1(void) {
  */
 void clear_objects(void) {
     s32 i;
+
+    ai_npc_reset();
 
     gTHIWaterDrained = 0;
     gTimeStopState = 0;

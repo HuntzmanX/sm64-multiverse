@@ -72,3 +72,9 @@ sm64config.txt
 !/sound/**/*custom*/**/*.aiff
 !/assets/**/*custom*.bin
 !/assets/**/*custom*/**/*.bin
+
+# NPC companion runtime and private conversation memory
+.sm64-npc-*
+**/.sm64-npc-*
+**/__pycache__/
+.env

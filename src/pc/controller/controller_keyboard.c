@@ -2,6 +2,7 @@
 #include <ultra64.h>
 
 #include "controller_api.h"
+#include "game/ai_npc.h"
 
 #ifdef TARGET_WEB
 #include "controller_emscripten_keyboard.h"
@@ -24,18 +25,22 @@ static int keyboard_map_scancode(int scancode) {
 }
 
 bool keyboard_on_key_down(int scancode) {
-    int mapped = keyboard_map_scancode(scancode);
+    int mapped;
+    if (ai_npc_key_down(scancode)) { keyboard_buttons_down = 0; return true; }
+    mapped = keyboard_map_scancode(scancode);
     keyboard_buttons_down |= mapped;
     return mapped != 0;
 }
 
 bool keyboard_on_key_up(int scancode) {
     int mapped = keyboard_map_scancode(scancode);
+    ai_npc_key_up(scancode);
     keyboard_buttons_down &= ~mapped;
     return mapped != 0;
 }
 
 void keyboard_on_all_keys_up(void) {
+    ai_npc_keys_up();
     keyboard_buttons_down = 0;
 }
 

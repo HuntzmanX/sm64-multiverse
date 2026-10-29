@@ -3,6 +3,7 @@
 #include "prevent_bss_reordering.h"
 #include "area.h"
 #include "sm64.h"
+#include "ai_npc.h"
 #include "gfx_dimensions.h"
 #include "behavior_data.h"
 #include "game_init.h"
@@ -228,6 +229,7 @@ void clear_area_graph_nodes(void) {
 
 void load_area(s32 index) {
     if (gCurrentArea == NULL && gAreaData[index].unk04 != NULL) {
+        ai_npc_reset();
         gCurrentArea = &gAreaData[index];
         gCurrAreaIndex = gCurrentArea->index;
 
@@ -246,6 +248,7 @@ void load_area(s32 index) {
 }
 
 void unload_area(void) {
+    ai_npc_reset();
     if (gCurrentArea != NULL) {
         unload_objects_from_area(0, gCurrentArea->index);
         geo_call_global_function_nodes(&gCurrentArea->unk04->node, GEO_CONTEXT_AREA_UNLOAD);
@@ -383,6 +386,7 @@ void render_game(void) {
         gDPSetScissor(gDisplayListHead++, G_SC_NON_INTERLACE, 0, BORDER_HEIGHT, SCREEN_WIDTH,
                       SCREEN_HEIGHT - BORDER_HEIGHT);
         gMenuOptSelectIndex = render_menus_and_dialogs();
+        ai_npc_render();
         if (gMenuOptSelectIndex != MENU_OPT_NONE) {
             gSaveOptSelectIndex = gMenuOptSelectIndex;
         }
