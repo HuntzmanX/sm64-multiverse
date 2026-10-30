@@ -119,8 +119,14 @@ and `[short pause]` are allowed. Mario still reads your typed words as written.
 The older broad emotion field remains a fallback for simple delivery.
 
 Escape, an area change, or a request timeout invalidates old audio and replies.
-Escaping during a turn cancels its unfinished action. Once a turn has completed,
-Escape allows its accepted action to run. AI-reply and player-message MP3s are
+Escaping during a turn cancels its unfinished action. NPCs can set
+`end_conversation` to say a final line and close the panel after speech finishes,
+including returning Mario's goodbye. Ordinary answers keep the conversation open.
+Any requested action automatically closes the conversation after speech, then
+starts in the NPC's next behavior update; no Escape or confirmation is needed.
+With voice disabled or playback unavailable, the last line stays readable for
+1.5–8 seconds before an automatic close. Escape cancels during that interval too.
+AI-reply and player-message MP3s are
 temporary and removed after playback. Game audio and voices mix through the computer; positional speech
 and music ducking are not implemented.
 
@@ -193,8 +199,8 @@ and [Text-to-Speech API](https://docs.fish.audio/api-reference/endpoint/openapi-
 - **Up/Down**, **Page Up/Page Down**, **Home/End**, the **mouse wheel**, or clicking
   the **on-screen arrows** scroll the transcript. A new message follows the
   newest entry automatically.
-- Type up to 120 characters. **Enter** sends when the current turn is finished
-  and no action is awaiting execution. You can draft your next message during
+- Type up to 120 characters. **Enter** sends when the current turn is finished.
+  You can draft your next message during
   playback. **Escape** closes/cancels as described above.
 - History remains visible when reopening the same NPC's chat in an area.
   The latest 16 acknowledged turns are restored from persistent memory on the
@@ -213,11 +219,12 @@ act, star count, conversation history and current AI movement mode provide conte
 | Action | Toad | Bob-omb Buddy | Effect |
 | --- | --- | --- | --- |
 | Speak | Yes | Yes | An in-character response, at most 200 characters |
+| End conversation | Yes | Yes | Say a final line, then close the panel after playback |
 | Follow / flee | Yes | Yes | Local steering for up to 30 seconds |
 | Approach | Yes | Yes | Walk toward Mario and stop nearby |
 | Stop / friendly | Yes | Yes | End AI movement or hostility |
 | Give coins | Yes | Yes | Spawn 1–3 collectible yellow coins |
-| Hostile | No | Yes | Chase and shove Mario for one wedge on contact, with invincibility cooldown |
+| Hostile | Yes | Yes | Chase and shove Mario for one wedge on contact, with invincibility cooldown |
 | Open cannon | No | Cannon operators only | Unlock the current course's cannon |
 
 AI movement uses floor/wall collision checks and refuses obvious ledges, lava

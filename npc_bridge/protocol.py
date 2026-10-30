@@ -44,7 +44,7 @@ def request_from_file(path: Path) -> dict:
         raise ValueError("Invalid NPC capabilities")
     if not isinstance(value.get("player_text"), str) or not 1 <= len(value["player_text"].strip()) <= 120:
         raise ValueError("Player text must be 1-120 characters")
-    if type(value.get("protocol_version", 1)) is not int or value.get("protocol_version", 1) not in (1, 2):
+    if type(value.get("protocol_version", 1)) is not int or value.get("protocol_version", 1) not in (1, 2, 3):
         raise ValueError("Unsupported conversation protocol")
     count = value.get("history_count", 0)
     if type(count) is not int or not 0 <= count <= 32:
@@ -58,21 +58,24 @@ def ascii_text(text: str, limit: int = 200) -> str:
     return " ".join(text.split())[:limit]
 
 
-def response_packet(token: str, reply: str, action: str = "none", amount: int = 0) -> str:
+def response_packet(token: str, reply: str, action: str = "none", amount: int = 0,
+                    *, end_conversation: bool = False, version: int = 2) -> str:
     if not TOKEN.fullmatch(token) or action not in ACTIONS:
         raise ValueError("Invalid response identity or action")
     if type(amount) is not int or not 0 <= amount <= 3 or (action != "give_coins" and amount != 0):
         raise ValueError("Invalid reward amount")
+    if type(end_conversation) is not bool or type(version) is not int or version not in (1, 2, 3):
+        raise ValueError("Invalid conversation completion")
     text = ascii_text(reply)
     if not text:
         raise ValueError("Empty reply")
-    return f"{token}\n{ACTIONS.index(action)} {amount}\n{text}\n"
+    ending = f" {int(end_conversation or action != 'none')}" if version >= 3 else ""
+    return f"{token}\n{ACTIONS.index(action)} {amount}{ending}\n{text}\n"
 
 
 def allowed_actions(request: dict) -> list[str]:
-    actions = [a for a in ACTIONS if a not in {"hostile", "open_cannon"}]
-    if request["kind"] == "bobomb_buddy":
-        actions.append("hostile")
+    actions = [a for a in ACTIONS if a != "open_cannon"
+               and (a != "hostile" or request["kind"] == "bobomb_buddy" or request.get("protocol_version", 1) >= 3)]
     if request["kind"] == "bobomb_buddy" and request["can_open_cannon"]:
         actions.append("open_cannon")
     return actions

@@ -216,7 +216,8 @@ static void clear_request(void) {
     remove(path);
 }
 static void cancel(void) {
-    /* Invalidates in-flight replies; no queued action survives a cancelled chat. */
+    /* Release chat and invalidate in-flight replies. Callers discard pending
+     * actions on cancellation; a completed NPC turn keeps its accepted action. */
     clear_request();
     if (live(sChat) && sChat->kind == 1) sChat->obj->oOpacity = sChat->chatOpacity;
     sOpen = sWaiting = 0;
@@ -263,7 +264,7 @@ static void submit(void) {
     if (!f) { strcpy(sStatus, "CANNOT WRITE REQUEST FILE"); return; }
     fprintf(f, "{\"id\":\"%s\",\"npc\":\"%s\",\"kind\":\"%s\",\"save\":%d,"
                "\"level\":%d,\"area\":%d,\"course\":%d,\"act\":%d,\"stars\":%d,"
-               "\"protocol_version\":2,\"history_count\":%d,\"dialog_id\":%d,\"coin_budget\":%d,\"mode\":\"%s\",\"can_open_cannon\":%s,\"player_text\":",
+               "\"protocol_version\":3,\"history_count\":%d,\"dialog_id\":%d,\"coin_budget\":%d,\"mode\":\"%s\",\"can_open_cannon\":%s,\"player_text\":",
             sToken, sChat->key, sChat->kind == 1 ? "toad" : "bobomb_buddy", gCurrSaveFileNum,
             gCurrLevelNum, gCurrAreaIndex, gCurrCourseNum, gCurrActNum, gMarioState->numStars,
             sChat->historyCount,
@@ -319,7 +320,7 @@ static void poll_event(void) {
 }
 static void poll_reply(void) {
     char path[512], token[80], text[244];
-    int action, amount;
+    int action, amount, endConversation = 0;
     FILE *f;
     if (!sWaiting) return;
     if (gGlobalTimer - sStarted > CHAT_TIMEOUT) {
@@ -334,14 +335,14 @@ static void poll_reply(void) {
     f = fopen(path, "r");
     if (!f) return;
     if (!fgets(token, sizeof(token), f) || !fgets(text, sizeof(text), f)
-        || sscanf(text, "%d %d", &action, &amount) != 2
+        || sscanf(text, "%d %d %d", &action, &amount, &endConversation) < 2
         || !fgets(text, sizeof(text), f)) { fclose(f); return; }
     fclose(f);
     token[strcspn(token, "\r\n")] = 0;
     if (strcmp(token, sToken) != 0) return;
     remove(path);
     if (action < NPC_NONE || action > NPC_CANNON || amount < 0 || amount > 3
-        || (action == NPC_HOSTILE && sChat->kind != 2)
+        || (endConversation != 0 && endConversation != 1)
         || (action == NPC_CANNON && !cannon_capable(sChat))
         || (action != NPC_COINS && amount != 0)
         || (action == NPC_COINS && amount < 1)) {
@@ -361,9 +362,10 @@ static void poll_reply(void) {
     if (action == NPC_NONE) {
         result(sChat, action, "Spoke; no action requested", 0);
         strcpy(sStatus, "ENTER SEND   ESC CLOSE");
-    } else {
-        strcpy(sStatus, "ESC CLOSE TO LET THEM ACT");
     }
+    /* The companion publishes completion only after the final voice has ended.
+     * Actions always release chat controls; a goodbye can close without an action. */
+    if (endConversation || action != NPC_NONE) cancel();
 }
 void ai_npc_update(void) {
     if (sNativeDialog >= 0 && (get_dialog_id() == DIALOG_NONE || sOpen)) clear_native_dialogue();
@@ -429,12 +431,8 @@ s32 ai_npc_key_down(s32 key) {
         return 0;
     }
     if (key == 1 && !repeated) {
-        if (sWaiting) { sChat->pending = 0; cancel(); }
-        else {
-            clear_request(); /* Stop speech while preserving the accepted NPC action. */
-            if (sChat->kind == 1) sChat->obj->oOpacity = sChat->chatOpacity;
-            sOpen = 0; sChat = NULL; sText[0] = 0;
-        }
+        sChat->pending = 0;
+        cancel();
         return 1;
     }
     if (key == 0x148 || key == 0x149) { sScroll += key == 0x149 ? 16 : 3; return 1; }
@@ -557,7 +555,7 @@ s32 ai_npc_tick(struct Object *obj, s32 kind) {
         if (kind == 1) { obj->oOpacity = 81; obj->oToadMessageState = 0;
                          obj->oToadMessageRecentlyTalked = FALSE; }
     }
-    /* A hostile Buddy shoves Mario on contact, with the normal invincibility window. */
+    /* A hostile NPC shoves Mario on contact, with the normal invincibility window. */
     if (n->mode == NPC_HOSTILE && d < 130 && !sOpen
         && gMarioState->invincTimer == 0 && !(gMarioState->action & ACT_FLAG_INVULNERABLE)
         && !(gMarioState->flags & (MARIO_VANISH_CAP | MARIO_METAL_CAP))) {
@@ -729,8 +727,7 @@ void ai_npc_render(void) {
         else { gDPSetEnvColor(gDisplayListHead++, 235, 240, 245, 255); }
         ui_text(x, y, sLines[index].text, columns);
     }
-    status = sWaiting ? (sStage == 0 ? "PREPARING MARIO VOICE" : sStage == 1 ? "THINKING..." : "SPEAKING...") :
-                       sChat->pending ? "ESC: LET THEM ACT" : "ENTER: SEND";
+    status = sWaiting ? (sStage == 0 ? "PREPARING MARIO VOICE" : sStage == 1 ? "THINKING..." : "SPEAKING...") : "ENTER: SEND";
     if (!sWaiting && strstr(sStatus, "TIMEOUT")) status = "TIMED OUT: ENTER TO RETRY";
     gDPSetEnvColor(gDisplayListHead++, 255, 220, 100, 255);
     ui_text(left+12, 84, status, columns);

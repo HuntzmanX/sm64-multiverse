@@ -220,8 +220,10 @@ def prepare_voice(config: SpeechConfig | None, kind: str, text: str, emotion: st
 
 
 def deliver_voice(audio: bytes | None, config: SpeechConfig | None, active: Callable[[], bool],
-                  on_start: Callable[[], None], log=print) -> None:
+                  on_start: Callable[[], None], log=print) -> bool:
+    """Reveal once; return whether audio played successfully (otherwise text fallback)."""
     revealed = False
+    played = False
 
     def reveal_once():
         nonlocal revealed
@@ -230,13 +232,15 @@ def deliver_voice(audio: bytes | None, config: SpeechConfig | None, active: Call
             revealed = True
 
     if not active():
-        return
+        return False
     try:
         if audio is not None and config:
             play_audio(audio, active, config.volume, reveal_once)
+            played = revealed
     except Exception as exc:
         if active():
             log(f"Audio playback unavailable ({type(exc).__name__}); using text.", flush=True)
     finally:
         # No voice, a failed device, or an empty response still leaves a readable turn.
         reveal_once()
+    return played

@@ -18,12 +18,12 @@ class TurnTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
-        self.req = request(protocol_version=2, history_count=0)
+        self.req = request(protocol_version=3, history_count=0)
         self.path = self.root / ".sm64-npc-request.json"
         self.path.write_text(json.dumps(self.req))
         self.pool = ThreadPoolExecutor(max_workers=2)
         self.addCleanup(self.pool.shutdown)
-        self.reply = SimpleNamespace(reply="Hi Mario!", action="follow", coins=0, emotion="excited")
+        self.reply = SimpleNamespace(reply="Hi Mario!", action="none", coins=0, emotion="excited", end_conversation=False)
         self.entry = dict(history=[], coins_given=0)
         self.record = Mock()
 
@@ -53,7 +53,7 @@ class TurnTests(unittest.TestCase):
         with patch("turns.prepare_voice", side_effect=prepare), patch("speech.play_audio", side_effect=play):
             self.assertTrue(turn.run(generate, self.entry, self.record))
         self.assertEqual(events, ["play-mario", "text-1", "end-mario", "play-toad", "text-2", "end-toad"])
-        self.assertIn("1 0\nHi Mario!", (self.root / ".sm64-npc-response").read_text())
+        self.assertIn("0 0 0\nHi Mario!", (self.root / ".sm64-npc-response").read_text())
         self.record.assert_called_once_with(self.reply, "Hi Mario!")
 
     def test_text_only_always_reveals_both_speakers_in_order(self):
@@ -75,6 +75,59 @@ class TurnTests(unittest.TestCase):
         self.assertFalse((self.root / ".sm64-npc-response").exists())
         self.assertEqual(turn.events.emit.call_count, 1)
 
+    def test_goodbye_or_action_is_sent_only_after_npc_audio_finishes(self):
+        for action, end in (("none", True), ("hostile", False), ("give_coins", False)):
+            with self.subTest(action=action):
+                response = self.root / ".sm64-npc-response"
+                response.unlink(missing_ok=True)
+                self.reply.action = action
+                self.reply.coins = 2 if action == "give_coins" else 0
+                self.reply.end_conversation = end
+                turn = self.turn(SpeechConfig("test"))
+                def play(audio, active, volume, on_start):
+                    on_start()
+                    self.assertFalse(response.exists())
+                    self.assertTrue(self.path.exists())
+                with patch("turns.prepare_voice", return_value=b"audio"), patch("speech.play_audio", side_effect=play):
+                    self.assertTrue(turn.run(lambda: self.reply, self.entry, self.record))
+                self.assertEqual(response.read_text().splitlines()[1].split()[2], "1")
+
+    def test_cancel_during_final_npc_line_discards_goodbye_and_action(self):
+        self.reply.action = "hostile"
+        self.reply.end_conversation = True
+        turn = self.turn(SpeechConfig("test"))
+        def play(audio, active, volume, on_start):
+            on_start()
+            if turn.events.emit.call_count == 2:
+                self.path.unlink()
+        with patch("turns.prepare_voice", return_value=b"audio"), patch("speech.play_audio", side_effect=play):
+            self.assertFalse(turn.run(lambda: self.reply, self.entry, self.record))
+        self.assertFalse((self.root / ".sm64-npc-response").exists())
+
+    def test_text_goodbye_or_failed_device_waits_for_reading_and_can_cancel(self):
+        for device_error in (False, True):
+            with self.subTest(device_error=device_error):
+                self.path.write_text(json.dumps(self.req))
+                self.reply.end_conversation = True
+                turn = self.turn(SpeechConfig("test") if device_error else None)
+                def cancel_while_reading(seconds):
+                    self.assertEqual(turn.events.emit.call_count, 2)
+                    self.assertFalse((self.root / ".sm64-npc-response").exists())
+                    self.path.unlink()
+                with patch("turns.prepare_voice", return_value=b"audio" if device_error else None), \
+                     patch("speech.play_audio", side_effect=RuntimeError("device failed")), \
+                     patch("turns.time.sleep", side_effect=cancel_while_reading) as sleep:
+                    self.assertFalse(turn.run(lambda: self.reply, self.entry, self.record))
+                sleep.assert_called_once()
+
+    def test_text_goodbye_finishes_after_reading_delay(self):
+        self.reply.end_conversation = True
+        turn = self.turn()
+        # First clock read precedes reveal, second starts the dwell; third expires it.
+        with patch("turns.time.monotonic", side_effect=[10.0, 10.0, 12.0]):
+            self.assertTrue(turn.run(lambda: self.reply, self.entry, self.record))
+        self.assertIn("\n0 0 1\n", (self.root / ".sm64-npc-response").read_text())
+
     def test_model_error_still_leaves_player_and_readable_error(self):
         turn = self.turn()
         def generate():
@@ -85,7 +138,7 @@ class TurnTests(unittest.TestCase):
         self.assertEqual(turn.events.emit.call_count, 2)
         self.assertEqual(turn.events.emit.call_args_list[0].args, (1, "Hello!"))
         self.assertIn("lost my train", turn.events.emit.call_args_list[1].args[1])
-        self.assertIn("\n0 0\n", (self.root / ".sm64-npc-response").read_text())
+        self.assertIn("\n0 0 0\n", (self.root / ".sm64-npc-response").read_text())
         self.record.assert_not_called()
 
     def test_persistent_history_restored_before_current_turn(self):

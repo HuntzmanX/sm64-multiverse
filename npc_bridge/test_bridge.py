@@ -51,8 +51,19 @@ class ProtocolTests(unittest.TestCase):
     def test_wire_action_order(self):
         self.assertEqual(ACTIONS, ("none", "follow", "flee", "approach", "stop", "hostile", "friendly", "give_coins", "open_cannon"))
 
+    def test_completion_packet_and_actions_end_the_chat(self):
+        self.assertEqual(response_packet("1-2-3", "Bye!", end_conversation=True, version=3),
+                         "1-2-3\n0 0 1\nBye!\n")
+        self.assertEqual(response_packet("1-2-3", "Hi!", version=3), "1-2-3\n0 0 0\nHi!\n")
+        self.assertIn("\n5 0 1\n", response_packet("1-2-3", "Fight me!", "hostile", version=3))
+        for value in (1, "true", None):
+            with self.assertRaises(ValueError):
+                response_packet("1-2-3", "Bye!", end_conversation=value, version=3)
+
     def test_capabilities_are_per_npc(self):
         self.assertNotIn("hostile", allowed_actions(request()))
+        self.assertIn("hostile", allowed_actions(request(protocol_version=3)))
+        validate_action(request(protocol_version=3), "hostile", 0, 0)
         self.assertNotIn("open_cannon", allowed_actions(request(kind="bobomb_buddy")))
         self.assertIn("open_cannon", allowed_actions(request(kind="bobomb_buddy", can_open_cannon=True)))
         with self.assertRaises(ValueError):
@@ -114,7 +125,7 @@ class ModelBoundaryTests(unittest.TestCase):
     def test_structured_api_reply_and_personality_context(self):
         from bridge import NpcReply, generate
         parse = unittest.mock.Mock(return_value=SimpleNamespace(
-            output_parsed=NpcReply(reply="I'll come with you!", action="follow", coins=0, emotion="neutral", spoken_reply="I'll come with you!")))
+            output_parsed=NpcReply(end_conversation=False, reply="I'll come with you!", action="follow", coins=0, emotion="neutral", spoken_reply="I'll come with you!")))
         client = SimpleNamespace(responses=SimpleNamespace(parse=parse))
         entry = dict(coins_given=8, history=[dict(actual_result="Coins spawned")])
         result = generate(client, "test-model", request(), entry)
@@ -129,17 +140,29 @@ class ModelBoundaryTests(unittest.TestCase):
     def test_model_cannot_invent_capabilities(self):
         from bridge import NpcReply, generate
         parse = unittest.mock.Mock(return_value=SimpleNamespace(
-            output_parsed=NpcReply(reply="Kaboom!", action="hostile", coins=0, emotion="angry", spoken_reply="[angry] Kaboom!")))
+            output_parsed=NpcReply(end_conversation=False, reply="Kaboom!", action="hostile", coins=0, emotion="angry", spoken_reply="[angry] Kaboom!")))
         with self.assertRaises(ValueError):
             generate(SimpleNamespace(responses=SimpleNamespace(parse=parse)), "test", request(), dict(coins_given=0, history=[]))
 
     def test_spoken_directions_cannot_rewrite_displayed_words(self):
         from bridge import NpcReply
-        good = NpcReply(reply="I am fine. Really!", action="none", coins=0, emotion="neutral",
+        good = NpcReply(end_conversation=False, reply="I am fine. Really!", action="none", coins=0, emotion="neutral",
                         spoken_reply="[nervous, forcing a smile] I am fine. [small laugh] Really!")
         self.assertEqual(good.reply, "I am fine. Really!")
         with self.assertRaises(ValueError):
-            NpcReply(reply="Hello!", action="none", coins=0, emotion="happy", spoken_reply="[angry] Goodbye!")
+            NpcReply(end_conversation=False, reply="Hello!", action="none", coins=0, emotion="happy", spoken_reply="[angry] Goodbye!")
+
+    def test_model_has_explicit_strict_conversation_end_command(self):
+        from bridge import NpcReply, SYSTEM
+        fields = dict(reply="Bye!", action="none", coins=0, emotion="happy", spoken_reply="Bye!")
+        self.assertTrue(NpcReply(**fields, end_conversation=True).end_conversation)
+        for value in (1, "true", None):
+            with self.assertRaises(ValueError):
+                NpcReply(**fields, end_conversation=value)
+        with self.assertRaises(ValueError):
+            NpcReply(**fields)
+        self.assertIn("say goodbye when Mario says goodbye", SYSTEM)
+        self.assertIn("after your speech finishes", SYSTEM)
 
     def test_superseded_request(self):
         from bridge import current_request

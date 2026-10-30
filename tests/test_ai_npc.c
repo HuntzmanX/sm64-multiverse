@@ -88,12 +88,13 @@ static void fixture(void) {
     tick();
 }
 static void type_hello(void) { key(35); key(18); key(38); key(38); key(24); }
-static void reply(const char *token, int action, int count) {
+static void reply_ending(const char *token, int action, int count, int end) {
     FILE *f = fopen(".sm64-npc-response", "w"); assert(f);
-    fprintf(f, "%s\n%d %d\nHello Mario!\n", token, action, count); fclose(f);
+    fprintf(f, "%s\n%d %d %d\nHello Mario!\n", token, action, count, end); fclose(f);
     gGlobalTimer += (3 - gGlobalTimer % 3) % 3;
     tick(); poll_reply();
 }
+static void reply(const char *token, int action, int count) { reply_ending(token, action, count, 0); }
 static void reveal(const char *token, s32 sequence, s32 speaker, const char *text) {
     FILE *f = fopen(".sm64-npc-event", "w"); assert(f);
     fprintf(f, "%s\n%d %d\n%s\n", token, sequence, speaker, text); fclose(f);
@@ -108,7 +109,7 @@ static void check_ui_and_timing(void) {
     assert(!sText[0] && sChat->historyCount == 0 && sStage == 0);
     f = fopen(".sm64-npc-request.json", "r"); assert(f);
     packet[fread(packet, 1, sizeof(packet)-1, f)] = 0; fclose(f);
-    assert(strstr(packet, "\"protocol_version\":2") && strstr(packet, "\"history_count\":0"));
+    assert(strstr(packet, "\"protocol_version\":3") && strstr(packet, "\"history_count\":0"));
     build_lines(30); assert(sLineCount == 3 && !strcmp(sLines[0].text, "MARIO"));
     reveal("0-0-0", 1, 1, "old"); assert(sChat->historyCount == 0);
     reveal(token, 1, 1, "ignored in favour of actual player input");
@@ -123,8 +124,8 @@ static void check_ui_and_timing(void) {
     assert(sChat->historyCount == 2 && sStage == 2 && sWaiting && !sChat->pending);
     assert(!sChat->history[1].mario && !strcmp(sChat->history[1].text, "Hello Mario!"));
     reply(token, NPC_FOLLOW, 0);
-    assert(!sWaiting && sChat->historyCount == 2 && sChat->pending == NPC_FOLLOW);
-    key(1); tick(); assert(sNpcs[0].mode == NPC_FOLLOW);
+    assert(!sWaiting && !sOpen && !sChat && sNpcs[0].historyCount == 2 && sNpcs[0].pending == NPC_FOLLOW);
+    tick(); assert(sNpcs[0].mode == NPC_FOLLOW);
 
     fixture(); key(20); type_hello(); key(28); strcpy(token, sToken);
     reveal(token, 1, 3, "Old Mario message"); reveal(token, 2, 4, "Old NPC reply");
@@ -192,7 +193,6 @@ static void check_grounded_movement(void) {
     s32 kinds[] = { 1, 2 }, modes[] = { NPC_FOLLOW, NPC_FLEE, NPC_APPROACH, NPC_HOSTILE };
     s32 k, a, i;
     for (k = 0; k < 2; k++) for (a = 0; a < 4; a++) {
-        if (kinds[k] == 1 && modes[a] == NPC_HOSTILE) continue;
         fixture();
         sNpcs[0].kind = kinds[k];
         npc.oGravity = kinds[k] == 2 ? 2.5f : 0;
@@ -222,6 +222,42 @@ static void check_grounded_movement(void) {
         ai_npc_tick(&npc, kinds[k]);
         assert(!sNpcs[0].mode && npc.oGravity == (kinds[k] == 2 ? 2.5f : 0));
     }
+}
+static void check_npc_conversation_end(void) {
+    char token[80], receipt[1024];
+    FILE *f;
+    fixture(); key(20); type_hello(); key(28); strcpy(token, sToken);
+    reveal(token, 1, 1, "hello"); reveal(token, 2, 2, "Goodbye, Mario!");
+    assert(sOpen && sWaiting && !sNpcs[0].pending && !sNpcs[0].mode);
+    reply_ending(token, NPC_NONE, 0, 1);
+    assert(!sOpen && !sWaiting && !sChat && !sNpcs[0].pending);
+    assert(sNpcs[0].historyCount == 2 && !sNpcs[0].mode);
+    assert(access(".sm64-npc-request.json", F_OK) != 0);
+    f = fopen(".sm64-npc-result.json", "r"); assert(f);
+    receipt[fread(receipt, 1, sizeof(receipt)-1, f)] = 0; fclose(f);
+    assert(strstr(receipt, token) && strstr(receipt, "\"action\":\"none\""));
+    controller.buttonDown = A_BUTTON; ai_npc_filter_controller(); assert(controller.buttonDown == A_BUTTON);
+    key(20); assert(sOpen && sChat->historyCount == 2);
+    type_hello(); key(28); strcpy(token, sToken);
+    reply(token, NPC_NONE, 0); assert(sOpen && !sWaiting && !sNpcs[0].pending);
+    type_hello(); key(28); strcpy(token, sToken);
+    reply_ending(token, NPC_NONE, 0, 2); assert(sOpen && !sWaiting && strstr(sStatus, "INVALID"));
+
+    /* Even Toad waits for the final completion packet before attacking. */
+    fixture(); sNpcs[0].kind = 1;
+    npc.oOpacity = 81; key(20); type_hello(); key(28); strcpy(token, sToken);
+    reveal(token, 1, 2, "That's it! Put 'em up!");
+    npc.oPosX = 50; tick(); assert(sOpen && !knockbacks);
+    reply_ending(token, NPC_HOSTILE, 0, 1); assert(!sOpen && !knockbacks);
+    ai_npc_tick(&npc, 1); assert(knockbacks == 1 && sNpcs[0].mode == NPC_HOSTILE);
+    ai_npc_tick(&npc, 1); assert(knockbacks == 1);
+    key(20); type_hello(); key(28); strcpy(token, sToken);
+    reply_ending(token, NPC_FRIENDLY, 0, 1);
+    ai_npc_tick(&npc, 1); assert(!sNpcs[0].mode && npc.oOpacity == 81);
+
+    fixture(); key(20); type_hello(); key(28); strcpy(token, sToken);
+    reveal(token, 1, 2, "I'll follow!"); key(1);
+    reply_ending(token, NPC_FOLLOW, 0, 1); tick(); assert(!sOpen && !sNpcs[0].mode);
 }
 static void check_original_dialogue_voice(void) {
     u8 encoded[] = { ASCII_TO_DIALOG('H'), ASCII_TO_DIALOG('i'), DIALOG_CHAR_SPACE,
@@ -272,9 +308,8 @@ int main(void) {
     assert(!controller.buttonDown && !controller.buttonPressed && !controller.stickMag);
     key(28); assert(sWaiting); strcpy(token, sToken);
     reply("0-0-0", NPC_COINS, 3); assert(sWaiting && !spawnedCoins);
-    reply(token, NPC_COINS, 3); assert(!sWaiting && sChat->pending == NPC_COINS);
-    tick(); assert(!spawnedCoins); /* Wait for the player to close the chat. */
-    key(1);
+    reply(token, NPC_COINS, 3); assert(!sWaiting && !sOpen && sNpcs[0].pending == NPC_COINS);
+    assert(!spawnedCoins); /* Execute only in the object's own callback. */
     assert(access(".sm64-npc-request.json", F_OK) != 0);
     tick(); assert(spawnedCoins == 3);
     tick(); assert(spawnedCoins == 3); /* Never execute a response twice. */
@@ -292,7 +327,7 @@ int main(void) {
 
     fixture(); npc.oBobombBuddyRole = BOBOMB_BUDDY_ROLE_CANNON;
     key(20); type_hello(); key(28); strcpy(token, sToken);
-    reply(token, NPC_CANNON, 0); key(1); tick(); assert(cannonUnlocks == 1);
+    reply(token, NPC_CANNON, 0); tick(); assert(!sOpen && cannonUnlocks == 1);
 
     fixture(); ai_npc_offer_reply(&npc); ai_npc_update(); assert(sOpen);
     key(1); assert(!sOpen);
@@ -302,7 +337,7 @@ int main(void) {
     key(1); assert(!sOpen);
 
     fixture(); key(20); type_hello(); key(28); strcpy(token, sToken);
-    reply(token, NPC_HOSTILE, 0); key(1); npc.oPosX = 50; tick();
+    reply(token, NPC_HOSTILE, 0); npc.oPosX = 50; tick();
     assert(knockbacks == 1 && mario.hurtCounter == 4 && mario.invincTimer == 60);
     tick(); assert(knockbacks == 1);
     key(20); tick(); assert(sOpen && knockbacks == 1);
@@ -315,6 +350,7 @@ int main(void) {
     check_ui_and_timing();
     check_conversation_sleep();
     check_grounded_movement();
+    check_npc_conversation_end();
     check_original_dialogue_voice();
     puts("Game-side NPC tests passed: engine gravity and grounded movement, UI history, scroll, voice reveals, camera framing, input, stale replies, cancellation, single execution, capabilities, timeout, hostility.");
     ai_npc_reset();

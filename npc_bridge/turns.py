@@ -97,12 +97,23 @@ class ConversationTurn:
             if not self.events.active():
                 return False
             remember(reply, text)
-            deliver_voice(npc_audio, self.config, self.events.active,
-                          lambda: self.events.emit(2, text), self.log)
+            end_conversation = reply.end_conversation or reply.action != "none"
+            revealed_at = time.monotonic()
+            def reveal_npc():
+                nonlocal revealed_at
+                self.events.emit(2, text)
+                revealed_at = time.monotonic()
+            played = deliver_voice(npc_audio, self.config, self.events.active, reveal_npc, self.log)
+            if end_conversation and not played:
+                # With no voice/device, leave the final line readable before closing.
+                deadline = revealed_at + min(8.0, max(1.5, len(text) / 20.0))
+                while self.events.active() and time.monotonic() < deadline:
+                    time.sleep(0.05)
             if not self.events.active():
                 return False
             atomic_write(self.runtime / ".sm64-npc-response",
-                         response_packet(self.request["id"], text, reply.action, reply.coins))
+                         response_packet(self.request["id"], text, reply.action, reply.coins,
+                                         end_conversation=end_conversation, version=self.events.version))
             return True
         finally:
             self.preparation_cancelled.set()
@@ -116,4 +127,5 @@ class ConversationTurn:
         text = "Sorry, I lost my train of thought. Could you say that again?"
         self.events.emit(2, text)
         if self.events.active():
-            atomic_write(self.runtime / ".sm64-npc-response", response_packet(self.request["id"], text))
+            atomic_write(self.runtime / ".sm64-npc-response",
+                         response_packet(self.request["id"], text, version=self.events.version))

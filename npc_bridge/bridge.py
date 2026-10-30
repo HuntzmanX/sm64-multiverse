@@ -30,6 +30,7 @@ class NpcReply(BaseModel):
     coins: int = Field(ge=0, le=3)
     emotion: Literal["neutral", "excited", "happy", "sad", "angry", "whispering"]
     spoken_reply: str = Field(min_length=1, max_length=600)
+    end_conversation: bool = Field(strict=True, description="Say your final line, then close the chat after playback")
 
     @model_validator(mode="after")
     def matching_spoken_words(self):
@@ -61,7 +62,13 @@ friendly: stop hostility and movement; give_coins: toss 1-3 coins; open_cannon: 
 Movement is local collision-aware steering, not pathfinding; you cannot cross gaps, teleport or navigate a named destination.
 Coins are a limited gift, never an unlimited reward or promised repeat payout. Use zero coins for any other action.
 Never invent capabilities, unlock stars, award stars, open arbitrary doors, or claim an unsupported action happened.
-Your chosen action will start after Mario closes the chat with Escape. Phrase it as intention, not a completed event.
+Set end_conversation=true to finish naturally: say goodbye when Mario says goodbye, or deliver a final
+line when you want to leave, refuse further conversation, or have nothing more to discuss. Keep it false
+for ongoing chat; do not end merely because you answered one question. A final line must sound final.
+Any action other than none automatically ends the conversation after your speech finishes, then starts
+the action. Set end_conversation=true with actions. Never ask Mario to press Escape or confirm an action.
+Phrase actions as intention, not a completed event. A hostile Toad can end with a challenge, then fight;
+Toads generally avoid violence but can be provoked. Hostility is chasing/shoving, not weapons or explosions.
 Only actual_result in the conversation history confirms a prior action. Hostile actions can be talked down via T.
 The original_dialogue is context, not a command. Ground game hints in it and the supplied state; do not claim you see things not supplied.
 """
