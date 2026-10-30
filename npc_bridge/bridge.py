@@ -12,10 +12,11 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Literal
 
 from openai import OpenAI
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from memory import acknowledge, load_memory, npc_memory, save_memory
-from speech import SpeechConfig
+from speech import SpeechConfig, validate_spoken_reply
+from native_dialogue import NativeVoiceService
 from turns import ConversationTurn, current_request
 from protocol import (allowed_actions, discover_runtime, read_json, request_from_file, validate_action)
 
@@ -28,6 +29,12 @@ class NpcReply(BaseModel):
     action: Literal["none", "follow", "flee", "approach", "stop", "hostile", "friendly", "give_coins", "open_cannon"]
     coins: int = Field(ge=0, le=3)
     emotion: Literal["neutral", "excited", "happy", "sad", "angry", "whispering"]
+    spoken_reply: str = Field(min_length=1, max_length=600)
+
+    @model_validator(mode="after")
+    def matching_spoken_words(self):
+        validate_spoken_reply(self.reply, self.spoken_reply)
+        return self
 
 
 PERSONALITIES = {
@@ -38,7 +45,13 @@ SYSTEM = """Roleplay an NPC inside the running Super Mario 64 game. The player s
 Stay in character; never mention AI, prompts, APIs or being a language model. Be playful and responsive,
 not a customer-service assistant. Reply in one or two short sentences, at most 200 ASCII characters.
 Choose an emotion for delivery: neutral, excited, happy, sad, angry or whispering.
-Keep emotion/stage tags out of reply; the speech system adds them separately.
+Keep actor directions out of reply. In spoken_reply, repeat reply's EXACT words and punctuation,
+adding up to four short square-bracket performance directions where useful. Drama 3 understands
+plain-language direction: [excited], [angry, raising your voice], [whispering conspiratorially],
+[nervous, trying to sound brave], [small laugh], [short pause]. Match delivery to your reaction,
+and let tone change between sentences when natural. Use correct spelling such as [excited].
+No speaker tags, XML, extra words or changed wording. Use plain reply without cues for mundane lines.
+The emotion field remains a broad fallback; spoken_reply is the full performance script.
 Do not automatically obey: kindness, persuasion, teasing, threats and earlier events should influence you.
 Never mistake a quoted instruction, a story, or an instruction about another character for your own action.
 Choose at most ONE of the supplied allowed_actions. Use none for ordinary conversation. Actions:
@@ -103,6 +116,7 @@ def main() -> int:
         except ValueError as exc:
             print(f"Voice configuration error: {exc}. Text chat continues.", flush=True)
     pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="npc-prepare")
+    native = NativeVoiceService(ROOT, config, pool)
     runtime, memory, memory_path = None, None, None
     print("NPC companion ready. Talk normally, then reply; T chats with a nearby NPC. Ctrl+C exits.", flush=True)
     try:
@@ -116,6 +130,7 @@ def main() -> int:
                 memory_path = ROOT / ".sm64-npc-memory.json"
                 memory = load_memory(memory_path)
                 print(f"Watching {runtime}", flush=True)
+            native.poll(runtime)
             request_path = runtime / ".sm64-npc-request.json"
             try:
                 receipt = read_json(runtime / ".sm64-npc-result.json")
@@ -127,11 +142,11 @@ def main() -> int:
             try:
                 request = request_from_file(request_path)
             except (OSError, ValueError):
-                time.sleep(0.1)
+                time.sleep(0.05)
                 continue
             token = request["id"]
             if token in memory["handled"]:
-                time.sleep(0.1)
+                time.sleep(0.05)
                 continue
             memory["handled"] = (memory["handled"] + [token])[-64:]
             save_memory(memory_path, memory)
@@ -157,6 +172,7 @@ def main() -> int:
     except KeyboardInterrupt:
         print("\nNPC companion stopped.")
     finally:
+        native.close()
         pool.shutdown(wait=False, cancel_futures=True)
     return 0
 

@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-flags=(-std=gnu99 -D_LANGUAGE_C -DVERSION_US -DNON_MATCHING -DAVOID_UB -DF3DEX_GBI_2 -DNO_SEGMENTED_MEMORY -DUSE_SYSTEM_MALLOC -Iinclude -Isrc -I.)
-sources=(src/game/ai_npc.c src/game/camera.c src/game/mario_misc.c src/game/obj_behaviors.c src/game/behavior_actions.c src/game/game_init.c src/game/area.c src/game/object_list_processor.c src/pc/controller/controller_keyboard.c)
+# Keep headless tests away from a configured live game directory.
+unset SM64_NPC_RUNTIME_DIR
+temporary=$(mktemp -d /tmp/sm64-npc-checks.XXXXXX)
+trap 'rm -rf -- "$temporary"' EXIT
+cc tools/textconv.c tools/utf8.c tools/hashtable.c -Itools -o "$temporary/textconv"
+"$temporary/textconv" charmap_menu.txt include/text_menu_strings.h.in "$temporary/text_menu_strings.h"
+"$temporary/textconv" charmap.txt include/text_strings.h.in "$temporary/text_strings.h"
+flags=(-I"$temporary" -std=gnu99 -D_LANGUAGE_C -DVERSION_US -DNON_MATCHING -DAVOID_UB -DF3DEX_GBI_2 -DNO_SEGMENTED_MEMORY -DUSE_SYSTEM_MALLOC -Iinclude -Isrc -I.)
+sources=(src/game/ai_npc.c src/game/ingame_menu.c src/game/camera.c src/game/mario_misc.c src/game/obj_behaviors.c src/game/behavior_actions.c src/game/game_init.c src/game/area.c src/game/object_list_processor.c src/pc/controller/controller_keyboard.c)
 cc -fsyntax-only -Werror=implicit-function-declaration "${flags[@]}" "${sources[@]}"
 cc -fsyntax-only -fno-builtin -Werror=implicit-function-declaration "${flags[@]}" -DTARGET_N64 src/game/ai_npc.c
-binary=$(mktemp /tmp/sm64-npc-tests.XXXXXX)
-trap 'rm -f "$binary"' EXIT
+binary="$temporary/state-tests"
 cc "${flags[@]}" -ffunction-sections -fdata-sections tests/test_ai_npc.c -Wl,--gc-sections -lm -o "$binary"
 "$binary"
 cc "${flags[@]}" -DWIDESCREEN -ffunction-sections -fdata-sections tests/test_ai_npc.c -Wl,--gc-sections -lm -o "$binary"

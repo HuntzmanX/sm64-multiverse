@@ -1,6 +1,7 @@
 #include <ultra64.h>
 
 #include "actors/common1.h"
+#include "ai_npc.h"
 #include "area.h"
 #include "audio/external.h"
 #include "camera.h"
@@ -1215,6 +1216,9 @@ void handle_dialog_text_and_pages(s8 colorMode, struct DialogEntry *dialog, s8 l
 #ifndef VERSION_EU
     s16 linePos = 0;
 #endif
+
+    ai_npc_native_page(gDialogID, gDialogTextPos, linesPerBox, str,
+                       gDialogBoxState == DIALOG_STATE_VERTICAL);
 
     if (gDialogBoxState == DIALOG_STATE_HORIZONTAL) {
         // If scrolling, consider the number of lines for both

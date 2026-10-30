@@ -67,7 +67,8 @@ class ConversationTurn:
             if not self.events.active() or self.preparation_cancelled.is_set():
                 return reply, text, None
         active = lambda: self.events.active() and not self.preparation_cancelled.is_set()
-        audio = prepare_voice(self.config, self.request["kind"], text, reply.emotion, active, self.log)
+        audio = prepare_voice(self.config, self.request["kind"], text, reply.emotion, active, self.log,
+                              script=getattr(reply, "spoken_reply", None))
         return reply, text, audio
 
     def run(self, generate, entry: dict, remember) -> bool:

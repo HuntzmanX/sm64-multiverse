@@ -67,17 +67,19 @@ answer. The defaults are:
 | --- | --- |
 | Mario | `a564085babeb4d14802ea31b7b6c2869` |
 | Toad (updated manic voice) | `e273b9cb9eaf4c5caefb83f6fefa7ac3` |
-| Bob-omb Buddy | Unset; text replies until a voice is selected |
+| Bob-omb Buddy (Gilbert Gottfried) | `c4adfd6bd1fe4e59ae18ce19dbce2c14` |
 
-The Fish model is explicitly `s2.1-pro-free`. Set a Fish key in the companion's
-terminal alongside your existing OpenAI key:
+The default Fish model is now **`drama-3`**, using your Fish API credit. Set a
+Fish key in the companion's terminal alongside your existing OpenAI key:
 
 ```powershell
 $env:FISH_AUDIO_API_KEY = "your-fish-key"
+$env:FISH_AUDIO_MODEL = "drama-3"
 python npc_bridge/bridge.py
 ```
 
-Bash equivalent: `export FISH_AUDIO_API_KEY="your-fish-key"`. No additional Python
+Bash equivalent: `export FISH_AUDIO_API_KEY="your-fish-key"` and
+`export FISH_AUDIO_MODEL="drama-3"`. No additional Python
 packages are needed. Native Windows Python uses Windows' built-in MP3 playback
 through WinMM/MCI. Linux/macOS or non-native MSYS Python need `ffplay` (FFmpeg),
 or you can run the companion with native Windows Python.
@@ -101,22 +103,37 @@ player launch, so decoder/device buffering can introduce a small difference.
 If a voice is disabled or fails, its text appears without audio and the turn
 continues. Stage tags stay out of the displayed dialogue.
 
+Drama 3 supports plain-language actor directions in square brackets. The OpenAI
+reply now includes a separate `spoken_reply` script, with up to four concise
+cues placed before the words they affect, for example:
+
+```text
+[excited] Ready for blastoff! [whispering conspiratorially] Just don't tell the King.
+```
+
+The displayed reply contains the same words without cues. Validation requires
+the spoken words and punctuation to match the displayed reply, preventing the
+model from inventing a different audio response. Natural directions such as
+`[nervous, trying to sound brave]`, `[angry, raising your voice]`, `[small laugh]`
+and `[short pause]` are allowed. Mario still reads your typed words as written.
+The older broad emotion field remains a fallback for simple delivery.
+
 Escape, an area change, or a request timeout invalidates old audio and replies.
 Escaping during a turn cancels its unfinished action. Once a turn has completed,
-Escape allows its accepted action to run. Temporary MP3s are removed after
-playback. Game audio and voices mix through the computer; positional speech
+Escape allows its accepted action to run. AI-reply and player-message MP3s are
+temporary and removed after playback. Game audio and voices mix through the computer; positional speech
 and music ducking are not implemented.
 
 The model still makes one OpenAI request per message. Fish receives each voiced
-message's text, its reference ID and an optional NPC expression tag. There are
+message's text, its reference ID and any performance directions. There are
 no requests while idle. Keys remain in the environment and are never saved.
 
 | Optional setting | Default / effect |
 | --- | --- |
 | `FISH_AUDIO_MARIO_VOICE` | Mario ID above; set empty to disable reading player messages |
 | `FISH_AUDIO_TOAD_VOICE` | New Toad ID above; empty disables Toad speech |
-| `FISH_AUDIO_BOBOMB_VOICE` | Empty; set a reference ID to enable Buddy speech |
-| `FISH_AUDIO_MODEL` | `s2.1-pro-free`; other recognized models must be chosen explicitly |
+| `FISH_AUDIO_BOBOMB_VOICE` | Gilbert ID above; empty disables Buddy speech |
+| `FISH_AUDIO_MODEL` | `drama-3`; can explicitly switch back to `s2.1-pro-free` |
 | `SM64_NPC_VOICE_VOLUME` | `0.8`; range `0`–`1` |
 
 `--no-voice` or an unset `FISH_AUDIO_API_KEY` gives the same panel and history
@@ -124,9 +141,43 @@ with text-only replies. Restart the companion after changing environment
 settings. Explicit voice overrides take priority over these new defaults.
 
 **Rebuild the game and restart the companion together after this update.** The
-new reveal/acknowledgement protocol is needed for both sides of the conversation.
+native-page hook and updated performance scripts require the matching game and companion.
 
 API reference: https://docs.fish.audio/api-reference/endpoint/openapi-v1/text-to-speech
+
+## Cached original NPC dialogue
+
+Original US-English **Toad and pink Bob-omb Buddy dialogue pages** are now voiced
+in their assigned voices. The game exports the actual page being displayed,
+including expanded button names and variable numbers; the companion does not
+ask OpenAI to rewrite these lines.
+
+- **First encounter:** generate any missing page recording and save it under
+  `npc_audio_cache/` in the repository root. There may be a short generation wait.
+- **Repeat encounter:** load the existing MP3 without another TTS request.
+- Advancing a page or leaving the dialogue stops the old page's playback.
+  Cannon preparation and "ready for blastoff" are separate pages/recordings.
+- If a page's first download has already started when you skip it, the complete
+  result can still be cached for next time. Queued pages that have not started
+  are cancelled. Stale audio never plays over a different page or an AI reply.
+- A cache key includes exact spoken text, model, reference voice, directions,
+  language and format. Changing those creates a fresh recording. Old files are
+  retained, so changing back can reuse them.
+- Failed, incomplete or non-MP3 downloads are not cached. An invalid existing
+  recording is regenerated. Concurrent requests for the same entry share one
+  generation.
+
+**Only original dialogue audio is cached.** AI-generated replies and Mario's
+messages always use temporary audio. The cache is ignored by git, and the live
+native-dialogue state expires if the game stops updating. Other characters and
+non-US dialogue decoding are not enabled by this version.
+
+Set `SM64_NPC_AUDIO_CACHE_DIR` to use another cache folder. Removing a cached
+recording causes it to be generated again next time. `--no-voice`, an unset Fish
+key, or an empty reference ID disables that voice without blocking the game.
+
+References: [Drama 3 performance guide](https://docs.fish.audio/features/text-to-speech/drama-3)
+and [Text-to-Speech API](https://docs.fish.audio/api-reference/endpoint/openapi-v1/text-to-speech).
 
 ## Panel, controls and camera
 
@@ -214,7 +265,8 @@ no-op implementation, run the actual C conversation/action state machine with
 stub engine functions at 4:3 and 16:9, and check history wrapping, half scaling,
 scroll buttons, reveal acknowledgement, and camera projection/easing. Python
 tests cover protocol, memory, model boundaries, cancellation, audio start
-callbacks, ordered playback and parallel preparation using mocked services. No API calls or ROM are required for those checks.
+callbacks, ordered playback, performance-script validation, native page decoding,
+cache misses/hits/invalidation, failed downloads and parallel preparation using mocked services. No API calls or ROM are required for those checks.
 
 A full linked build and visual/play test require your local extracted game
 assets. In particular, verify the panel visually, camera composition in different rooms,

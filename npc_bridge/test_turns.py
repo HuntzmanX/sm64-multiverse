@@ -39,7 +39,7 @@ class TurnTests(unittest.TestCase):
             started.set()
             self.assertNotEqual(threading.current_thread(), threading.main_thread())
             return self.reply
-        def prepare(config, kind, text, emotion, active, log):
+        def prepare(config, kind, text, emotion, active, log, **kwargs):
             if kind == "mario":
                 self.assertTrue(started.wait(2))
             return kind.encode()

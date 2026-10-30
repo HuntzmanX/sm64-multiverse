@@ -54,6 +54,10 @@ static char sToken[80], sText[INPUT_LIMIT + 1], sReply[241], sSubmitted[INPUT_LI
 static s32 sScroll, sStage, sPlayerShown, sNpcShown, sEventSequence;
 static f32 sFrameBlend, sFrameTarget[3];
 static u32 sFrameTimer;
+static s32 sNativeDialog = -1, sNativePage = -1;
+static struct Object *sNativeObject;
+static char sNativeText[1024], sNativeToken[80];
+static u32 sNativeFrame;
 static char sStatus[96] = "ENTER SEND   ESC CLOSE";
 static const char *sActions[] = { "none", "follow", "flee", "approach", "stop",
                                  "hostile", "friendly", "give_coins", "open_cannon" };
@@ -118,6 +122,94 @@ static void append_message(s32 mario, const char *text) {
     m->text[sizeof(m->text)-1] = 0;
     sScroll = 0;
 }
+static void clear_native_dialogue(void) {
+    char path[512];
+    path_for(path, sizeof(path), ".sm64-npc-native.json");
+    remove(path);
+    sNativeDialog = sNativePage = -1;
+    sNativeObject = NULL;
+}
+void ai_npc_native_page(s32 dialog, s32 start, s32 lines, const u8 *encoded, s32 visible) {
+#if defined(VERSION_US)
+    struct Npc *npc = NULL;
+    char text[1024], part[48], token[80], path[512], temp[520];
+    s32 i, j = 0, line = 0, c, samePage;
+    FILE *file;
+    if (!visible || sOpen || !gMarioState || !gCurrentArea || !encoded || start < 0
+        || dialog < 0 || lines < 1 || lines > 12) {
+        if (sNativeDialog >= 0) clear_native_dialogue();
+        return;
+    }
+    for (i = 0; i < NPC_COUNT; i++) {
+        if (sNpcs[i].obj && (sNpcs[i].obj == gMarioState->interactObj
+            || sNpcs[i].obj == gMarioState->usedObj)
+            && (sNpcs[i].obj->activeFlags & ACTIVE_FLAG_ACTIVE)) { npc = &sNpcs[i]; break; }
+    }
+    if (!npc) { if (sNativeDialog >= 0) clear_native_dialogue(); return; }
+    for (i = start; i < start + 2048 && j < (s32)sizeof(text)-1; i++) {
+        c = encoded[i]; part[0] = 0;
+        if (c == DIALOG_CHAR_TERMINATOR) break;
+        if (c == DIALOG_CHAR_NEWLINE) { if (++line >= lines) break; strcpy(part, " "); }
+        else if (c <= 9) { part[0] = '0' + c; part[1] = 0; }
+        else if (c <= 0x23) { part[0] = 'A' + c - 10; part[1] = 0; }
+        else if (c <= 0x3D) { part[0] = 'a' + c - 0x24; part[1] = 0; }
+        else if (c >= 0x54 && c <= 0x58) snprintf(part, sizeof(part), "%c button", "ABCZR"[c-0x54]);
+        else switch (c) {
+            case 0x3E: strcpy(part, "'"); break;
+            case 0x3F: case DIALOG_CHAR_PERIOD: strcpy(part, "."); break;
+            case DIALOG_CHAR_COMMA: strcpy(part, ","); break;
+            case 0x50: strcpy(part, "up"); break;
+            case 0x51: strcpy(part, "down"); break;
+            case 0x52: strcpy(part, "left"); break;
+            case 0x53: strcpy(part, "right"); break;
+            case DIALOG_CHAR_SPACE: strcpy(part, " "); break;
+            case 0x9F: strcpy(part, "-"); break;
+            case DIALOG_CHAR_SLASH: strcpy(part, "/"); break;
+            case DIALOG_CHAR_MULTI_THE: strcpy(part, "the"); break;
+            case DIALOG_CHAR_MULTI_YOU: strcpy(part, "you"); break;
+            case DIALOG_CHAR_STAR_COUNT: snprintf(part, sizeof(part), "%d", gDialogVariable); break;
+            case 0xE1: strcpy(part, "("); break;
+            case 0xE2: strcpy(part, ")("); break;
+            case 0xE3: strcpy(part, ")"); break;
+            case 0xE4: strcpy(part, "+"); break;
+            case 0xE5: strcpy(part, "and"); break;
+            case 0xE6: strcpy(part, ":"); break;
+            case 0xF2: strcpy(part, "!"); break;
+            case 0xF3: strcpy(part, "%"); break;
+            case 0xF4: strcpy(part, "?"); break;
+            case 0xF5: case 0xF6: part[0] = 34; part[1] = 0; break;
+            case 0xF8: strcpy(part, "..."); break;
+            case 0xF9: strcpy(part, "coin"); break;
+            case 0xFA: case 0xFD: strcpy(part, "star"); break;
+            case 0xFB: strcpy(part, "times"); break;
+            default: strcpy(part, " "); break;
+        }
+        if (j + strlen(part) >= sizeof(text)) break;
+        memcpy(text + j, part, strlen(part)); j += strlen(part);
+    }
+    text[j] = 0;
+    samePage = sNativeObject == npc->obj && sNativeDialog == dialog && sNativePage == start
+        && !strcmp(sNativeText, text);
+    if (!j || (samePage && gGlobalTimer - sNativeFrame < 30)) return;
+    if (samePage) strcpy(token, sNativeToken); /* Refresh liveness without a new playback request. */
+    else {
+        if (!sSession) sSession = (u32)time(NULL) ^ (u32)clock();
+        snprintf(token, sizeof(token), "%u-%u-%u", sSession, ++sRequest, gGlobalTimer);
+    }
+    path_for(path, sizeof(path), ".sm64-npc-native.json");
+    snprintf(temp, sizeof(temp), "%s.tmp", path);
+    file = fopen(temp, "w"); if (!file) return;
+    fprintf(file, "{\"id\":\"%s\",\"source\":\"default\",\"language\":\"us\",\"kind\":\"%s\",\"dialog_id\":%d,\"page\":%d,\"text\":",
+            token, npc->kind == 1 ? "toad" : "bobomb_buddy", dialog, start);
+    json_string(file, text); fputs("}\n", file);
+    if (fclose(file) != 0) return;
+    remove(path); if (rename(temp, path) != 0) return;
+    sNativeObject = npc->obj; sNativeDialog = dialog; sNativePage = start;
+    strcpy(sNativeText, text); strcpy(sNativeToken, token); sNativeFrame = gGlobalTimer;
+#else
+    (void)dialog; (void)start; (void)lines; (void)encoded; (void)visible;
+#endif
+}
 static void clear_request(void) {
     char path[512];
     path_for(path, sizeof(path), ".sm64-npc-request.json");
@@ -134,12 +226,14 @@ static void cancel(void) {
 }
 void ai_npc_reset(void) {
     cancel();
+    clear_native_dialogue();
     sOffer = NULL;
     memset(sNpcs, 0, sizeof(sNpcs));
     sFrameBlend = 0;
 }
 static void open_chat(struct Npc *n) {
     if (!live(n) || distance(n->obj) > CHAT_RANGE || !ready()) return;
+    clear_native_dialogue();
     sChat = n;
     n->chatOpacity = n->obj->oOpacity;
     sOpen = 1;
@@ -272,6 +366,7 @@ static void poll_reply(void) {
     }
 }
 void ai_npc_update(void) {
+    if (sNativeDialog >= 0 && (get_dialog_id() == DIALOG_NONE || sOpen)) clear_native_dialogue();
     if (sOpen && (!live(sChat) || !ready() || distance(sChat->obj) > CHAT_RANGE + 100)) {
         if (sChat) sChat->pending = 0;
         cancel();
@@ -644,6 +739,8 @@ void ai_npc_render(void) {
 }
 
 #else
+void ai_npc_native_page(UNUSED s32 dialog, UNUSED s32 start, UNUSED s32 lines,
+                        UNUSED const u8 *encoded, UNUSED s32 visible) {}
 void ai_npc_reset(void) {}
 void ai_npc_update(void) {}
 void ai_npc_render(void) {}

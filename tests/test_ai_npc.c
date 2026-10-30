@@ -12,6 +12,7 @@ struct MarioState *gMarioState = &mario;
 struct Area *gCurrentArea = &area;
 struct Controller *gPlayer1Controller = &controller;
 struct WarpTransition gWarpTransition;
+s32 gDialogVariable = 7;
 s16 sCurrPlayMode, gCurrSaveFileNum = 1, gCurrLevelNum = 6, gCurrAreaIndex = 1;
 s16 gCurrCourseNum, gCurrActNum = 1;
 u32 gGlobalTimer = 10;
@@ -183,6 +184,44 @@ static void check_conversation_sleep(void) {
     key(20); ai_npc_update();
     assert(sOpen && mario.action == ACT_IDLE);
 }
+static void check_original_dialogue_voice(void) {
+    u8 encoded[] = { ASCII_TO_DIALOG('H'), ASCII_TO_DIALOG('i'), DIALOG_CHAR_SPACE,
+        0x54, 0xF2, DIALOG_CHAR_NEWLINE, ASCII_TO_DIALOG('G'), ASCII_TO_DIALOG('o'),
+        DIALOG_CHAR_SPACE, DIALOG_CHAR_MULTI_THE, DIALOG_CHAR_SPACE, DIALOG_CHAR_MULTI_YOU,
+        DIALOG_CHAR_SPACE, DIALOG_CHAR_STAR_COUNT, DIALOG_CHAR_TERMINATOR };
+    char packet[2048], before[2048];
+    FILE *file;
+    u32 counter;
+    struct Object other;
+    fixture(); mario.interactObj = &npc;
+    ai_npc_native_page(4, 0, 1, encoded, TRUE);
+    file = fopen(".sm64-npc-native.json", "r"); assert(file);
+    packet[fread(packet, 1, sizeof(packet)-1, file)] = 0; fclose(file);
+    assert(strstr(packet, "\"source\":\"default\"") && strstr(packet, "\"kind\":\"bobomb_buddy\""));
+    assert(strstr(packet, "\"text\":\"Hi A button!\""));
+    strcpy(before, packet); counter = sRequest;
+    ai_npc_native_page(4, 0, 1, encoded, TRUE);
+    assert(sRequest == counter); /* Repeated render frames do not request more audio. */
+    gGlobalTimer += 30; tick();
+    ai_npc_native_page(4, 0, 1, encoded, TRUE);
+    assert(sRequest == counter); /* Heartbeats retain the page request ID. */
+    ai_npc_native_page(4, 6, 2, encoded, TRUE);
+    file = fopen(".sm64-npc-native.json", "r"); assert(file);
+    packet[fread(packet, 1, sizeof(packet)-1, file)] = 0; fclose(file);
+    assert(strcmp(packet, before) && strstr(packet, "\"page\":6"));
+    assert(strstr(packet, "\"text\":\"Go the you 7\""));
+    ai_npc_native_page(4, 6, 2, encoded, FALSE);
+    assert(access(".sm64-npc-native.json", F_OK) != 0);
+    mario.interactObj = &other; mario.usedObj = NULL;
+    ai_npc_native_page(4, 0, 1, encoded, TRUE);
+    assert(access(".sm64-npc-native.json", F_OK) != 0); /* Signs/other speakers are not this NPC. */
+    mario.interactObj = NULL; mario.usedObj = &npc;
+    ai_npc_native_page(4, 0, 1, encoded, TRUE);
+    assert(access(".sm64-npc-native.json", F_OK) == 0);
+    key(20); assert(sOpen && access(".sm64-npc-native.json", F_OK) != 0);
+    key(1); ai_npc_native_page(4, 0, 1, encoded, TRUE);
+    ai_npc_reset(); assert(access(".sm64-npc-native.json", F_OK) != 0);
+}
 int main(void) {
     char temp[] = "/tmp/sm64-npc-test-XXXXXX", token[80];
     assert(mkdtemp(temp)); assert(chdir(temp) == 0);
@@ -236,6 +275,7 @@ int main(void) {
 
     check_ui_and_timing();
     check_conversation_sleep();
+    check_original_dialogue_voice();
     puts("Game-side NPC tests passed: UI history, scroll, voice reveals, camera framing, input, stale replies, cancellation, single execution, capabilities, timeout, hostility.");
     ai_npc_reset();
     remove(".sm64-npc-response"); remove(".sm64-npc-result.json");

@@ -2,11 +2,13 @@ import io
 import json
 import os
 import unittest
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 from speech import (MAX_AUDIO_BYTES, TOAD_VOICE, MARIO_VOICE, SpeechConfig,
-                    _play_windows, synthesize, tts_request, prepare_voice, deliver_voice)
+                    _play_windows, synthesize, tts_request, prepare_voice, deliver_voice, validate_spoken_reply, play_audio)
 
 
 class SpeechTests(unittest.TestCase):
@@ -18,10 +20,10 @@ class SpeechTests(unittest.TestCase):
             self.assertIsNone(SpeechConfig.from_environment())
         with patch.dict(os.environ, {"FISH_AUDIO_API_KEY": "test-key"}, clear=True):
             config = SpeechConfig.from_environment()
-            self.assertEqual(config.model, "s2.1-pro-free")
+            self.assertEqual(config.model, "drama-3")
             self.assertEqual(config.voice_for("toad"), "e273b9cb9eaf4c5caefb83f6fefa7ac3")
             self.assertEqual(config.voice_for("mario"), "a564085babeb4d14802ea31b7b6c2869")
-            self.assertEqual(config.voice_for("bobomb_buddy"), "")
+            self.assertEqual(config.voice_for("bobomb_buddy"), "c4adfd6bd1fe4e59ae18ce19dbce2c14")
             self.assertNotIn("test-key", repr(config))
 
     def test_overrides_and_independent_voice_disable(self):
@@ -42,10 +44,33 @@ class SpeechTests(unittest.TestCase):
         self.assertEqual(request.full_url, "https://api.fish.audio/v1/tts")
         self.assertEqual(request.get_method(), "POST")
         self.assertEqual(request.get_header("Authorization"), "Bearer test-key")
-        self.assertEqual(request.get_header("Model"), "s2.1-pro-free")
+        self.assertEqual(request.get_header("Model"), "drama-3")
         self.assertEqual(json.loads(request.data), dict(text="[excited] Hello Mario!", reference_id=TOAD_VOICE, format="mp3"))
         neutral = tts_request(self.config, MARIO_VOICE, "Hello!", "neutral")
         self.assertEqual(json.loads(neutral.data), dict(text="Hello!", reference_id=MARIO_VOICE, format="mp3"))
+
+    def test_drama_script_keeps_inline_delivery_cues(self):
+        text = "You want coins? Fine."
+        script = "[angry, incredulous] You want coins? [whispering] Fine."
+        result = tts_request(self.config, TOAD_VOICE, text, "angry", script=script)
+        self.assertEqual(json.loads(result.data)["text"], script)
+        for invalid in ["[angry] No coins.", "[x[y]] You want coins? Fine.",
+                        "<|speaker:1|>You want coins? Fine.", "["+"x"*90+"] You want coins? Fine."]:
+            with self.assertRaises(ValueError):
+                validate_spoken_reply(text, invalid)
+
+    def test_native_pages_have_explicit_larger_text_limit(self):
+        text = "A"*300
+        with self.assertRaises(ValueError):
+            tts_request(self.config, TOAD_VOICE, text, "neutral")
+        request = tts_request(self.config, TOAD_VOICE, text, "neutral", max_characters=1024)
+        self.assertEqual(len(json.loads(request.data)["text"]), 300)
+
+    def test_incomplete_audio_is_not_accepted(self):
+        response = self.response(b"ID3short")
+        response.headers["Content-Length"] = "100"
+        with patch("speech.urllib.request.urlopen", return_value=response), self.assertRaises(ValueError):
+            synthesize(self.config, TOAD_VOICE, "Hi!", "neutral", lambda: True)
 
     def test_invalid_emotions_and_long_speech_rejected(self):
         for text, emotion in [("hi", "explode"), ("", "happy"), ("x"*201, "neutral")]:
@@ -111,8 +136,25 @@ class SpeechTests(unittest.TestCase):
         self.assertNotIn("test-key", log.call_args.args[0])
         with patch("speech.synthesize") as synth:
             self.assertIsNone(prepare_voice(None, "mario", "Hi!", "neutral", lambda: True))
-            self.assertIsNone(prepare_voice(self.config, "bobomb_buddy", "Hi!", "neutral", lambda: True))
+            self.assertIsNone(prepare_voice(SpeechConfig("test", bobomb_voice=""), "bobomb_buddy", "Hi!", "neutral", lambda: True))
             synth.assert_not_called()
+
+    def test_native_and_ai_playback_share_one_device(self):
+        began, release = threading.Event(), threading.Event()
+        counts = [0, 0]
+        def play(audio, active, volume, on_start):
+            counts[0] += 1
+            counts[1] = max(counts[1], counts[0])
+            began.set()
+            release.wait(2)
+            counts[0] -= 1
+        with patch("speech._play_audio_unlocked", side_effect=play), ThreadPoolExecutor(max_workers=2) as pool:
+            one = pool.submit(play_audio, b"native", lambda: True, 0.8)
+            self.assertTrue(began.wait(2))
+            two = pool.submit(play_audio, b"ai", lambda: True, 0.8)
+            release.set()
+            one.result(2); two.result(2)
+        self.assertEqual(counts, [0, 1])
 
     def test_windows_audio_start_callback_and_device_cleanup(self):
         commands = []

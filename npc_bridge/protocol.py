@@ -94,8 +94,9 @@ def discover_runtime(root: Path) -> Path:
     override = os.environ.get("SM64_NPC_RUNTIME_DIR")
     if override:
         return Path(override).expanduser().resolve()
-    candidates = [root / ".sm64-npc-request.json"]
+    candidates = [root / ".sm64-npc-request.json", root / ".sm64-npc-native.json"]
     candidates.extend((root / "build").glob("*/.sm64-npc-request.json"))
+    candidates.extend((root / "build").glob("*/.sm64-npc-native.json"))
     existing = [p for p in candidates if p.is_file()]
     return max(existing, key=lambda p: p.stat().st_mtime_ns).parent if existing else root
 

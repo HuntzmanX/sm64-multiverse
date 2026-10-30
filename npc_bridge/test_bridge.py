@@ -114,7 +114,7 @@ class ModelBoundaryTests(unittest.TestCase):
     def test_structured_api_reply_and_personality_context(self):
         from bridge import NpcReply, generate
         parse = unittest.mock.Mock(return_value=SimpleNamespace(
-            output_parsed=NpcReply(reply="I'll come with you!", action="follow", coins=0, emotion="neutral")))
+            output_parsed=NpcReply(reply="I'll come with you!", action="follow", coins=0, emotion="neutral", spoken_reply="I'll come with you!")))
         client = SimpleNamespace(responses=SimpleNamespace(parse=parse))
         entry = dict(coins_given=8, history=[dict(actual_result="Coins spawned")])
         result = generate(client, "test-model", request(), entry)
@@ -129,9 +129,17 @@ class ModelBoundaryTests(unittest.TestCase):
     def test_model_cannot_invent_capabilities(self):
         from bridge import NpcReply, generate
         parse = unittest.mock.Mock(return_value=SimpleNamespace(
-            output_parsed=NpcReply(reply="Kaboom!", action="hostile", coins=0, emotion="angry")))
+            output_parsed=NpcReply(reply="Kaboom!", action="hostile", coins=0, emotion="angry", spoken_reply="[angry] Kaboom!")))
         with self.assertRaises(ValueError):
             generate(SimpleNamespace(responses=SimpleNamespace(parse=parse)), "test", request(), dict(coins_given=0, history=[]))
+
+    def test_spoken_directions_cannot_rewrite_displayed_words(self):
+        from bridge import NpcReply
+        good = NpcReply(reply="I am fine. Really!", action="none", coins=0, emotion="neutral",
+                        spoken_reply="[nervous, forcing a smile] I am fine. [small laugh] Really!")
+        self.assertEqual(good.reply, "I am fine. Really!")
+        with self.assertRaises(ValueError):
+            NpcReply(reply="Hello!", action="none", coins=0, emotion="happy", spoken_reply="[angry] Goodbye!")
 
     def test_superseded_request(self):
         from bridge import current_request
