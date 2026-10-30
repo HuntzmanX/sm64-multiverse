@@ -93,11 +93,14 @@ static void result(struct Npc *n, s32 action, const char *outcome, s32 coins) {
     fputs("}\n", f);
     if (fclose(f) == 0) { remove(path); rename(temp, path); }
 }
-static void cancel(void) {
-    /* Invalidates in-flight replies; no queued action survives a cancelled chat. */
+static void clear_request(void) {
     char path[512];
     path_for(path, sizeof(path), ".sm64-npc-request.json");
     remove(path);
+}
+static void cancel(void) {
+    /* Invalidates in-flight replies; no queued action survives a cancelled chat. */
+    clear_request();
     if (live(sChat) && sChat->kind == 1) sChat->obj->oOpacity = sChat->chatOpacity;
     sOpen = sWaiting = 0;
     sChat = NULL;
@@ -252,6 +255,7 @@ s32 ai_npc_key_down(s32 key) {
     if (key == 1 && !repeated) {
         if (sWaiting) { sChat->pending = 0; cancel(); }
         else {
+            clear_request(); /* Stop speech while preserving the accepted NPC action. */
             if (sChat->kind == 1) sChat->obj->oOpacity = sChat->chatOpacity;
             sOpen = 0; sChat = NULL; sText[0] = 0;
         }

@@ -58,6 +58,56 @@ Use `--model YOUR_MODEL` or `OPENAI_MODEL` if your account uses a different
 model supporting Responses structured output. Each submitted message makes an
 API request using your own account; ordinary gameplay makes no requests.
 
+## Toad voice (Fish Audio)
+
+Toad's **AI replies** can now use the reference voice supplied for this project.
+The default reference ID is `91a1e83b577448fbac8ef6fe050f67c9`; the default Fish
+model is explicitly `s2.1-pro-free`. Native dialogue is unchanged. Bob-omb
+Buddies remain silent unless you configure their own reference voice.
+
+Set a Fish API key in the terminal running the companion, alongside your
+existing OpenAI key. Never put a key in source code or commit it.
+
+```powershell
+$env:FISH_AUDIO_API_KEY = "your-fish-key"
+python npc_bridge/bridge.py
+```
+
+Bash equivalent: `export FISH_AUDIO_API_KEY="your-fish-key"`.
+No additional Python packages are needed for voice. Native Windows Python uses
+Windows' built-in MP3 playback through WinMM/MCI. On Linux/macOS or a non-native
+MSYS Python, install `ffplay` (FFmpeg), or launch the companion with native
+Windows Python. Game audio and speech play simultaneously through the computer;
+this version does not add positional sound or music ducking in the engine.
+
+Text appears immediately after the OpenAI reply; a separate worker requests and
+plays the MP3. Delivery can be neutral, excited, happy, sad, angry or whispering.
+Tags are added only to the speech request, never displayed as dialogue. The
+worker sends the reply text, selected tag and voice reference to Fish Audio.
+Audio is temporary and removed after playback. Nothing is generated on idle.
+
+**Escape stops speech** when closing a chat. Leaving the area, submitting a new
+message, or stopping the companion also cancels stale playback. Cancelling an
+HTTP request may take until its next chunk/timeout; its audio is then discarded.
+An accepted game action still executes after Escape. Speech errors print a short
+terminal message and do not block the reply or the NPC's action.
+
+Optional environment settings:
+
+| Setting | Default / effect |
+| --- | --- |
+| `FISH_AUDIO_TOAD_VOICE` | The Toad reference ID above; empty disables Toad speech |
+| `FISH_AUDIO_BOBOMB_VOICE` | Empty; set your chosen reference ID to enable Buddy speech |
+| `FISH_AUDIO_MODEL` | `s2.1-pro-free`; other recognized models must be chosen explicitly |
+| `SM64_NPC_VOICE_VOLUME` | `0.8`; range `0`–`1` |
+
+Use `python npc_bridge/bridge.py --no-voice` to disable speech, or leave
+`FISH_AUDIO_API_KEY` unset. Restart the companion after changing its environment.
+After updating this branch, **rebuild the game once** for the Escape/area-change
+cancellation signal. Fish API credentials/audio are not needed for automated tests.
+
+API reference: https://docs.fish.audio/api-reference/endpoint/openapi-v1/text-to-speech
+
 ## Playing
 
 - Speak to Toad or a pink Bob-omb Buddy normally. Finish their original dialogue

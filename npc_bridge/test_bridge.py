@@ -114,7 +114,7 @@ class ModelBoundaryTests(unittest.TestCase):
     def test_structured_api_reply_and_personality_context(self):
         from bridge import NpcReply, generate
         parse = unittest.mock.Mock(return_value=SimpleNamespace(
-            output_parsed=NpcReply(reply="I'll come with you!", action="follow", coins=0)))
+            output_parsed=NpcReply(reply="I'll come with you!", action="follow", coins=0, emotion="neutral")))
         client = SimpleNamespace(responses=SimpleNamespace(parse=parse))
         entry = dict(coins_given=8, history=[dict(actual_result="Coins spawned")])
         result = generate(client, "test-model", request(), entry)
@@ -129,7 +129,7 @@ class ModelBoundaryTests(unittest.TestCase):
     def test_model_cannot_invent_capabilities(self):
         from bridge import NpcReply, generate
         parse = unittest.mock.Mock(return_value=SimpleNamespace(
-            output_parsed=NpcReply(reply="Kaboom!", action="hostile", coins=0)))
+            output_parsed=NpcReply(reply="Kaboom!", action="hostile", coins=0, emotion="angry")))
         with self.assertRaises(ValueError):
             generate(SimpleNamespace(responses=SimpleNamespace(parse=parse)), "test", request(), dict(coins_given=0, history=[]))
 

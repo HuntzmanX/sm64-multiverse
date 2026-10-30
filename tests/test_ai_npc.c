@@ -65,7 +65,9 @@ int main(void) {
     reply("0-0-0", NPC_COINS, 3); assert(sWaiting && !spawnedCoins);
     reply(token, NPC_COINS, 3); assert(!sWaiting && sChat->pending == NPC_COINS);
     tick(); assert(!spawnedCoins); /* Wait for the player to close the chat. */
-    key(1); tick(); assert(spawnedCoins == 3);
+    key(1);
+    assert(access(".sm64-npc-request.json", F_OK) != 0);
+    tick(); assert(spawnedCoins == 3);
     tick(); assert(spawnedCoins == 3); /* Never execute a response twice. */
 
     fixture(); key(20); type_hello(); key(28); strcpy(token, sToken);
