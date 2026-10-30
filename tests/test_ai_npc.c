@@ -34,6 +34,11 @@ f32 find_floor(f32 x, f32 y, f32 z, struct Surface **floor) { *floor = &surface;
 void cur_obj_update_floor_and_walls(void) {}
 void cur_obj_move_standard(s16 degrees) {}
 s32 drop_and_set_mario_action(struct MarioState *m, u32 action, u32 arg) { knockbacks++; return 1; }
+u32 set_mario_action(struct MarioState *m, u32 action, u32 arg) {
+    m->action = action; m->actionArg = arg;
+    m->actionState = m->actionTimer = 0;
+    return TRUE;
+}
 
 /* Record UI draw calls without game textures to exercise layout and half scaling. */
 static Gfx drawBuffer[8192];
@@ -156,6 +161,28 @@ static void check_ui_and_timing(void) {
     assert(sFrameBlend == 0 && focus[0] == 0);
     remove(".sm64-npc-event"); remove(".sm64-npc-event-ack");
 }
+static void check_conversation_sleep(void) {
+    u32 sleepActions[] = { ACT_START_SLEEPING, ACT_SLEEPING, ACT_WAKING_UP };
+    s32 i;
+    fixture(); key(20);
+    mario.actionTimer = 10; mario.actionState = 3;
+    ai_npc_update();
+    assert(sOpen && mario.action == ACT_IDLE && !mario.actionTimer && !mario.actionState);
+    for (i = 0; i < 3; i++) {
+        mario.action = sleepActions[i];
+        ai_npc_update();
+        assert(mario.action == ACT_IDLE && !mario.actionTimer && !mario.actionState);
+    }
+    mario.action = ACT_WALKING; mario.actionTimer = 42;
+    ai_npc_update(); assert(mario.action == ACT_WALKING && mario.actionTimer == 42);
+    key(1);
+    mario.action = ACT_IDLE; mario.actionTimer = 10; mario.actionState = 3;
+    ai_npc_update(); assert(mario.actionTimer == 10 && mario.actionState == 3);
+    mario.action = ACT_SLEEPING;
+    ai_npc_update(); assert(mario.action == ACT_SLEEPING);
+    key(20); ai_npc_update();
+    assert(sOpen && mario.action == ACT_IDLE);
+}
 int main(void) {
     char temp[] = "/tmp/sm64-npc-test-XXXXXX", token[80];
     assert(mkdtemp(temp)); assert(chdir(temp) == 0);
@@ -208,6 +235,7 @@ int main(void) {
     assert(npc.oOpacity == 81 && npc.oToadMessageState == 0);
 
     check_ui_and_timing();
+    check_conversation_sleep();
     puts("Game-side NPC tests passed: UI history, scroll, voice reveals, camera framing, input, stale replies, cancellation, single execution, capabilities, timeout, hostility.");
     ai_npc_reset();
     remove(".sm64-npc-response"); remove(".sm64-npc-result.json");

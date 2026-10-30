@@ -280,6 +280,17 @@ void ai_npc_update(void) {
         if (!sOpen) open_chat(sOffer);
         sOffer = NULL;
     }
+    if (sOpen) {
+        /* Neutral chat controls must not count as idle time toward sleep. */
+        if (gMarioState->action == ACT_START_SLEEPING || gMarioState->action == ACT_SLEEPING
+            || gMarioState->action == ACT_WAKING_UP) {
+            set_mario_action(gMarioState, ACT_IDLE, 0);
+        }
+        if (gMarioState->action == ACT_IDLE) {
+            gMarioState->actionTimer = 0;
+            if (gMarioState->actionState == 3) gMarioState->actionState = 0;
+        }
+    }
     poll_event();
     poll_reply();
 }
