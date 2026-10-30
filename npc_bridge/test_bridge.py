@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,7 +8,7 @@ from unittest.mock import patch
 
 from memory import acknowledge, load_memory, npc_memory, save_memory
 from protocol import (ACTIONS, allowed_actions, ascii_text, atomic_write, request_from_file,
-                      response_packet, validate_action)
+                      response_packet, validate_action, discover_runtime)
 
 
 def request(**changes):
@@ -79,6 +80,71 @@ class ProtocolTests(unittest.TestCase):
     def test_coins_only_on_coin_action(self):
         with self.assertRaises(ValueError):
             validate_action(request(), "follow", 2, 0)
+
+
+class RuntimeDiscoveryTests(unittest.TestCase):
+    def setUp(self):
+        environment = patch.dict(os.environ, {}, clear=True)
+        environment.start()
+        self.addCleanup(environment.stop)
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        self.build = self.root / "build/us_pc"
+        self.build.mkdir(parents=True)
+        self.fallback = self.root / ".sm64-npc-request.json"
+        self.fallback.write_text("{}")
+        os.utime(self.fallback, ns=(100, 100))
+
+    def test_file_removed_after_metadata_read_is_not_statted_again(self):
+        for name in (".sm64-npc-native.json", ".sm64-npc-request.json"):
+            with self.subTest(name=name):
+                path = self.build / name
+                path.write_text("{}")
+                os.utime(path, ns=(200, 200))
+                original_stat = Path.stat
+                calls = []
+                def stat_then_remove(candidate, *args, **kwargs):
+                    info = original_stat(candidate, *args, **kwargs)
+                    if candidate == path:
+                        calls.append(candidate)
+                        path.unlink()
+                    return info
+                with patch.object(Path, "stat", stat_then_remove):
+                    self.assertEqual(discover_runtime(self.root), self.build)
+                self.assertEqual(calls, [path])
+                self.assertFalse(path.exists())
+
+    def test_disappearing_or_temporarily_unreadable_candidates_are_skipped(self):
+        path = self.build / ".sm64-npc-native.json"
+        original_stat = Path.stat
+        for error in (FileNotFoundError, PermissionError):
+            with self.subTest(error=error):
+                path.write_text("{}")
+                def interrupted_stat(candidate, *args, **kwargs):
+                    if candidate == path:
+                        path.unlink()
+                        raise error("Page changed during discovery")
+                    return original_stat(candidate, *args, **kwargs)
+                with patch.object(Path, "stat", interrupted_stat):
+                    self.assertEqual(discover_runtime(self.root), self.root)
+
+    def test_latest_regular_file_wins_and_empty_scan_uses_root(self):
+        path = self.build / ".sm64-npc-native.json"
+        path.mkdir()  # A directory with a matching name must not be selected.
+        self.assertEqual(discover_runtime(self.root), self.root)
+        path.rmdir()
+        path.write_text("{}")
+        os.utime(path, ns=(200, 200))
+        self.assertEqual(discover_runtime(self.root), self.build)
+        path.unlink()
+        self.fallback.unlink()
+        self.assertEqual(discover_runtime(self.root), self.root)
+
+    def test_explicit_runtime_override_does_not_scan_live_files(self):
+        with patch.dict(os.environ, {"SM64_NPC_RUNTIME_DIR": str(self.build)}), \
+             patch.object(Path, "glob", side_effect=AssertionError("Unexpected scan")):
+            self.assertEqual(discover_runtime(self.root), self.build)
 
 
 class MemoryTests(unittest.TestCase):

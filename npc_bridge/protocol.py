@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import stat
 import unicodedata
 from pathlib import Path
 
@@ -100,8 +101,18 @@ def discover_runtime(root: Path) -> Path:
     candidates = [root / ".sm64-npc-request.json", root / ".sm64-npc-native.json"]
     candidates.extend((root / "build").glob("*/.sm64-npc-request.json"))
     candidates.extend((root / "build").glob("*/.sm64-npc-native.json"))
-    existing = [p for p in candidates if p.is_file()]
-    return max(existing, key=lambda p: p.stat().st_mtime_ns).parent if existing else root
+    latest, latest_time = root, None
+    for path in candidates:
+        # The game removes/replaces these files on page changes and chat close.
+        # Snapshot each candidate once; an existence check followed by another
+        # stat can race with that removal (especially on Windows).
+        try:
+            info = path.stat()
+        except OSError:
+            continue
+        if stat.S_ISREG(info.st_mode) and (latest_time is None or info.st_mtime_ns > latest_time):
+            latest, latest_time = path.parent, info.st_mtime_ns
+    return latest
 
 
 def event_packet(token: str, sequence: int, speaker: int, text: str) -> str:
