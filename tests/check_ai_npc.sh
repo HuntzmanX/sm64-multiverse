@@ -13,9 +13,11 @@ sources=(src/game/ai_npc.c src/game/ingame_menu.c src/game/camera.c src/game/mar
 cc -fsyntax-only -Werror=implicit-function-declaration "${flags[@]}" "${sources[@]}"
 cc -fsyntax-only -fno-builtin -Werror=implicit-function-declaration "${flags[@]}" -DTARGET_N64 src/game/ai_npc.c
 binary="$temporary/state-tests"
-cc "${flags[@]}" -ffunction-sections -fdata-sections tests/test_ai_npc.c -Wl,--gc-sections -lm -o "$binary"
+# Link actual engine physics; rename the coin helper so the reward spy can coexist.
+cc "${flags[@]}" -ffunction-sections -fdata-sections -Dobj_spawn_loot_yellow_coins=engine_spawn_loot_yellow_coins -c src/game/object_helpers.c -o "$temporary/object_helpers.o"
+cc "${flags[@]}" -ffunction-sections -fdata-sections tests/test_ai_npc.c "$temporary/object_helpers.o" -Wl,--gc-sections -lm -o "$binary"
 "$binary"
-cc "${flags[@]}" -DWIDESCREEN -ffunction-sections -fdata-sections tests/test_ai_npc.c -Wl,--gc-sections -lm -o "$binary"
+cc "${flags[@]}" -DWIDESCREEN -ffunction-sections -fdata-sections tests/test_ai_npc.c "$temporary/object_helpers.o" -Wl,--gc-sections -lm -o "$binary"
 "$binary"
 printf '#include "game/ai_npc.h"\n' | c++ -fsyntax-only -x c++ -D_LANGUAGE_C -Iinclude -Isrc -
 python -m unittest discover -s npc_bridge -p 'test_*.py' -v

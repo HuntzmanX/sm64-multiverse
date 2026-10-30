@@ -498,7 +498,7 @@ s32 ai_npc_tick(struct Object *obj, s32 kind) {
     struct Npc *n = NULL;
     s32 i, moving;
     s16 yaw;
-    f32 d, nextX, nextZ, floorY;
+    f32 d, nextX, nextZ, floorY, nativeGravity, nativeWallRadius;
     struct Surface *floor;
     for (i = 0; i < NPC_COUNT; i++) if (sNpcs[i].obj == obj) { n = &sNpcs[i]; break; }
     if (!n) {
@@ -539,10 +539,17 @@ s32 ai_npc_tick(struct Object *obj, s32 kind) {
     floorY = find_floor(nextX, obj->oPosY + 80, nextZ, &floor);
     if (!floor || floor->type == SURFACE_BURNING || floor->type == SURFACE_DEATH_PLANE
         || fabsf(floorY - obj->oPosY) > 100) obj->oForwardVel = 0;
-    obj->oGravity = 2.5f;
+    /* object_step (used by Buddies) subtracts positive gravity, whereas
+     * cur_obj_move_standard adds signed gravity. Keep our settings local to
+     * this step so returning to the native behavior preserves its physics. */
+    nativeGravity = obj->oGravity;
+    nativeWallRadius = obj->oWallHitboxRadius;
+    obj->oGravity = -2.5f;
     obj->oWallHitboxRadius = 50.0f;
     cur_obj_update_floor_and_walls();
     cur_obj_move_standard(-78);
+    obj->oGravity = nativeGravity;
+    obj->oWallHitboxRadius = nativeWallRadius;
     obj->oInteractStatus = 0;
     if (kind == 1) obj->oOpacity = 255;
     if (n->mode == NPC_APPROACH && d < 160) {

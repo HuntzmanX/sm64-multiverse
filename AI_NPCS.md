@@ -221,8 +221,9 @@ act, star count, conversation history and current AI movement mode provide conte
 | Open cannon | No | Cannon operators only | Unlock the current course's cannon |
 
 AI movement uses floor/wall collision checks and refuses obvious ledges, lava
-and death planes. It is not navigation/pathfinding: NPCs cannot route through
-complex terrain, doors or arbitrary named destinations. Animation polish and
+and death planes. Its movement helper uses downward signed gravity, restoring
+the NPC's original physics settings after each step. It is not navigation/pathfinding:
+NPCs cannot route through complex terrain, doors or arbitrary named destinations. Animation polish and
 more elaborate combat are future work. Following does not carry across areas.
 The normal game's star rewards, cannon cutscenes and progression remain intact.
 

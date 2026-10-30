@@ -1,5 +1,5 @@
-/* Headless tests of the actual game-side state machine. Engine functions below
- * are stubs; rendering and full game physics require the user's extracted assets. */
+/* Headless tests of the actual state machine and object_helpers movement.
+ * Collision queries use a flat test floor; rendering uses stubs. */
 #include <assert.h>
 #include <unistd.h>
 #include "../src/game/ai_npc.c"
@@ -11,6 +11,7 @@ static struct Controller controller;
 struct MarioState *gMarioState = &mario;
 struct Area *gCurrentArea = &area;
 struct Controller *gPlayer1Controller = &controller;
+struct Object *gCurrentObject = &npc;
 struct WarpTransition gWarpTransition;
 s32 gDialogVariable = 7;
 s16 sCurrPlayMode, gCurrSaveFileNum = 1, gCurrLevelNum = 6, gCurrAreaIndex = 1;
@@ -29,11 +30,10 @@ void obj_spawn_loot_yellow_coins(struct Object *obj, s32 count, f32 unused) {
     spawnedCoins += count;
     obj->oNumLootCoins = 0;
 }
-s16 approach_s16_symmetric(s16 value, s16 target, s16 increment) { return target; }
 s16 atan2s(f32 y, f32 x) { return 0; }
 f32 find_floor(f32 x, f32 y, f32 z, struct Surface **floor) { *floor = &surface; return 0; }
-void cur_obj_update_floor_and_walls(void) {}
-void cur_obj_move_standard(s16 degrees) {}
+s32 find_wall_collisions(struct WallCollisionData *data) { return 0; }
+f32 find_water_level(f32 x, f32 z) { return FLOOR_LOWER_LIMIT; }
 s32 drop_and_set_mario_action(struct MarioState *m, u32 action, u32 arg) { knockbacks++; return 1; }
 u32 set_mario_action(struct MarioState *m, u32 action, u32 arg) {
     m->action = action; m->actionArg = arg;
@@ -73,11 +73,15 @@ void print_generic_string(s16 x, s16 y, const u8 *text) {
 static void tick(void) { ai_npc_tick(&npc, 2); }
 static void key(int scan) { ai_npc_key_down(scan); ai_npc_key_up(scan); }
 static void fixture(void) {
+    s32 i;
     ai_npc_reset(); ai_npc_keys_up();
     memset(&npc, 0, sizeof(npc)); memset(&mario, 0, sizeof(mario));
     memset(&controller, 0, sizeof(controller));
     mario.marioObj = &marioObj; mario.action = ACT_IDLE;
     npc.activeFlags = ACTIVE_FLAG_ACTIVE;
+    npc.oGravity = 2.5f; /* Native Buddy object_step convention. */
+    surface.normal.y = 1;
+    for (i = 0; i < 0x1400; i++) gSineTable[i] = sinf(i * 6.28318530718f / 0x1000);
     npc.oPosX = 200;
     npc.oBobombBuddyRole = BOBOMB_BUDDY_ROLE_ADVICE;
     spawnedCoins = cannonUnlocks = knockbacks = 0;
@@ -184,6 +188,41 @@ static void check_conversation_sleep(void) {
     key(20); ai_npc_update();
     assert(sOpen && mario.action == ACT_IDLE);
 }
+static void check_grounded_movement(void) {
+    s32 kinds[] = { 1, 2 }, modes[] = { NPC_FOLLOW, NPC_FLEE, NPC_APPROACH, NPC_HOSTILE };
+    s32 k, a, i;
+    for (k = 0; k < 2; k++) for (a = 0; a < 4; a++) {
+        if (kinds[k] == 1 && modes[a] == NPC_HOSTILE) continue;
+        fixture();
+        sNpcs[0].kind = kinds[k];
+        npc.oGravity = kinds[k] == 2 ? 2.5f : 0;
+        npc.oWallHitboxRadius = 17;
+        mario.pos[2] = 600;
+        sNpcs[0].pending = modes[a];
+        for (i = 0; i < 120; i++) {
+            ai_npc_tick(&npc, kinds[k]);
+            assert(npc.oPosY == 0 && npc.oVelY == 0);
+            assert(npc.oGravity == (kinds[k] == 2 ? 2.5f : 0));
+            assert(npc.oWallHitboxRadius == 17);
+        }
+        assert(npc.oPosZ != 0); /* Real engine movement, not a no-op stub. */
+        /* An elevated NPC falls back to the floor rather than accelerating up. */
+        npc.oPosY = 60;
+        sNpcs[0].pending = NPC_FOLLOW;
+        ai_npc_tick(&npc, kinds[k]);
+        assert(npc.oPosY < 60 && npc.oVelY < 0);
+        for (i = 0; i < 20; i++) ai_npc_tick(&npc, kinds[k]);
+        assert(npc.oPosY == 0 && npc.oVelY == 0);
+        sNpcs[0].pending = NPC_STOP;
+        ai_npc_tick(&npc, kinds[k]);
+        assert(!sNpcs[0].mode && npc.oGravity == (kinds[k] == 2 ? 2.5f : 0));
+        sNpcs[0].pending = NPC_FOLLOW;
+        ai_npc_tick(&npc, kinds[k]);
+        sNpcs[0].frames = 1;
+        ai_npc_tick(&npc, kinds[k]);
+        assert(!sNpcs[0].mode && npc.oGravity == (kinds[k] == 2 ? 2.5f : 0));
+    }
+}
 static void check_original_dialogue_voice(void) {
     u8 encoded[] = { ASCII_TO_DIALOG('H'), ASCII_TO_DIALOG('i'), DIALOG_CHAR_SPACE,
         0x54, 0xF2, DIALOG_CHAR_NEWLINE, ASCII_TO_DIALOG('G'), ASCII_TO_DIALOG('o'),
@@ -275,8 +314,9 @@ int main(void) {
 
     check_ui_and_timing();
     check_conversation_sleep();
+    check_grounded_movement();
     check_original_dialogue_voice();
-    puts("Game-side NPC tests passed: UI history, scroll, voice reveals, camera framing, input, stale replies, cancellation, single execution, capabilities, timeout, hostility.");
+    puts("Game-side NPC tests passed: engine gravity and grounded movement, UI history, scroll, voice reveals, camera framing, input, stale replies, cancellation, single execution, capabilities, timeout, hostility.");
     ai_npc_reset();
     remove(".sm64-npc-response"); remove(".sm64-npc-result.json");
     assert(chdir("/") == 0); rmdir(temp);
