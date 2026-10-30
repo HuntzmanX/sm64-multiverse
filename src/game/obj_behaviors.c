@@ -1,6 +1,7 @@
 #include <PR/ultratypes.h>
 
 #include "sm64.h"
+#include "ai_npc.h"
 #include "area.h"
 #include "audio/external.h"
 #include "behavior_actions.h"
