@@ -4,6 +4,7 @@
 
 #include "prevent_bss_reordering.h"
 #include "sm64.h"
+#include "ai_npc.h"
 #include "camera.h"
 #include "seq_ids.h"
 #include "dialog_ids.h"
@@ -3526,6 +3527,8 @@ void update_graph_node_camera(struct GraphNodeCamera *gc) {
     vec3f_copy(gc->pos, gLakituState.pos);
     vec3f_copy(gc->focus, gLakituState.focus);
     zoom_out_if_paused_and_outside(gc);
+    ai_npc_frame_camera(gc->pos, gc->focus,
+                        gCurGraphNodeCamFrustum ? gCurGraphNodeCamFrustum->fov : 45.0f);
 }
 
 Gfx *geo_camera_main(s32 callContext, struct GraphNode *g, void *context) {

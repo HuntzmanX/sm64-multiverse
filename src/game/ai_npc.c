@@ -9,6 +9,7 @@
 #include <time.h>
 #include "area.h"
 #include "behavior_data.h"
+#include "camera.h"
 #include "dialog_ids.h"
 #include "engine/math_util.h"
 #include "engine/surface_collision.h"
@@ -29,6 +30,11 @@
 #define NPC_COUNT 32
 #define CHAT_RANGE 650.0f
 #define INPUT_LIMIT 120
+#define HISTORY_MESSAGES 32
+#define UI_LINES 768
+#define CHAT_TIMEOUT 3600
+
+struct ChatMessage { s32 mario; char text[241]; };
 /* Wire action IDs are shared with npc_bridge/protocol.py. */
 enum { NPC_NONE, NPC_FOLLOW, NPC_FLEE, NPC_APPROACH, NPC_STOP,
        NPC_HOSTILE, NPC_FRIENDLY, NPC_COINS, NPC_CANNON };
@@ -37,12 +43,17 @@ struct Npc {
     s32 kind, coins, mode, frames, pending, amount, chatOpacity;
     u32 seen;
     char key[128], token[80];
+    s32 historyCount;
+    struct ChatMessage history[HISTORY_MESSAGES];
 };
 static struct Npc sNpcs[NPC_COUNT];
 static struct Npc *sChat, *sOffer;
 static s32 sOpen, sWaiting, sShift[2], sKeys[512];
 static u32 sStarted, sRequest, sSession;
-static char sToken[80], sText[INPUT_LIMIT + 1], sReply[241];
+static char sToken[80], sText[INPUT_LIMIT + 1], sReply[241], sSubmitted[INPUT_LIMIT + 1];
+static s32 sScroll, sStage, sPlayerShown, sNpcShown, sEventSequence;
+static f32 sFrameBlend, sFrameTarget[3];
+static u32 sFrameTimer;
 static char sStatus[96] = "ENTER SEND   ESC CLOSE";
 static const char *sActions[] = { "none", "follow", "flee", "approach", "stop",
                                  "hostile", "friendly", "give_coins", "open_cannon" };
@@ -93,6 +104,20 @@ static void result(struct Npc *n, s32 action, const char *outcome, s32 coins) {
     fputs("}\n", f);
     if (fclose(f) == 0) { remove(path); rename(temp, path); }
 }
+static void append_message(s32 mario, const char *text) {
+    struct ChatMessage *m;
+    if (!sChat || !text[0]) return;
+    if (sChat->historyCount == HISTORY_MESSAGES) {
+        memmove(sChat->history, sChat->history + 1,
+                sizeof(sChat->history[0]) * (HISTORY_MESSAGES - 1));
+        sChat->historyCount--;
+    }
+    m = &sChat->history[sChat->historyCount++];
+    m->mario = mario;
+    strncpy(m->text, text, sizeof(m->text)-1);
+    m->text[sizeof(m->text)-1] = 0;
+    sScroll = 0;
+}
 static void clear_request(void) {
     char path[512];
     path_for(path, sizeof(path), ".sm64-npc-request.json");
@@ -111,6 +136,7 @@ void ai_npc_reset(void) {
     cancel();
     sOffer = NULL;
     memset(sNpcs, 0, sizeof(sNpcs));
+    sFrameBlend = 0;
 }
 static void open_chat(struct Npc *n) {
     if (!live(n) || distance(n->obj) > CHAT_RANGE || !ready()) return;
@@ -120,6 +146,7 @@ static void open_chat(struct Npc *n) {
     sWaiting = 0;
     sText[0] = 0;
     sReply[0] = 0;
+    sScroll = sStage = 0;
     strcpy(sStatus, "ENTER SEND   ESC CLOSE");
 }
 void ai_npc_offer_reply(struct Object *obj) {
@@ -142,9 +169,10 @@ static void submit(void) {
     if (!f) { strcpy(sStatus, "CANNOT WRITE REQUEST FILE"); return; }
     fprintf(f, "{\"id\":\"%s\",\"npc\":\"%s\",\"kind\":\"%s\",\"save\":%d,"
                "\"level\":%d,\"area\":%d,\"course\":%d,\"act\":%d,\"stars\":%d,"
-               "\"dialog_id\":%d,\"coin_budget\":%d,\"mode\":\"%s\",\"can_open_cannon\":%s,\"player_text\":",
+               "\"protocol_version\":2,\"history_count\":%d,\"dialog_id\":%d,\"coin_budget\":%d,\"mode\":\"%s\",\"can_open_cannon\":%s,\"player_text\":",
             sToken, sChat->key, sChat->kind == 1 ? "toad" : "bobomb_buddy", gCurrSaveFileNum,
             gCurrLevelNum, gCurrAreaIndex, gCurrCourseNum, gCurrActNum, gMarioState->numStars,
+            sChat->historyCount,
             sChat->kind == 1 ? (s32)sChat->obj->oToadMessageDialogId :
                 (cannon_capable(sChat) ? (gCurrCourseNum == COURSE_BOB ? DIALOG_105 : DIALOG_106)
                                       : (s32)sChat->obj->oBehParams2ndByte),
@@ -154,18 +182,57 @@ static void submit(void) {
     if (fclose(f) != 0) { strcpy(sStatus, "REQUEST WRITE FAILED"); return; }
     remove(path);
     if (rename(temp, path) != 0) { strcpy(sStatus, "REQUEST RENAME FAILED"); return; }
+    strcpy(sSubmitted, sText);
+    sText[0] = 0;
+    sPlayerShown = sNpcShown = sEventSequence = sStage = 0;
+    sScroll = 0;
     sWaiting = 1;
     sStarted = gGlobalTimer;
     strcpy(sStatus, "THINKING   ESC CANCEL");
+}
+static void poll_event(void) {
+    char path[512], token[80], line[256], temp[520];
+    s32 sequence, speaker;
+    FILE *f;
+    if (!sWaiting) return;
+    path_for(path, sizeof(path), ".sm64-npc-event");
+    f = fopen(path, "r");
+    if (!f) return;
+    if (!fgets(token, sizeof(token), f) || !fgets(line, sizeof(line), f)
+        || sscanf(line, "%d %d", &sequence, &speaker) != 2
+        || !fgets(line, sizeof(line), f)) { fclose(f); return; }
+    fclose(f);
+    token[strcspn(token, "\r\n")] = 0;
+    line[strcspn(line, "\r\n")] = 0;
+    if (strcmp(token, sToken) || sequence < 1 || speaker < 1 || speaker > 4) return;
+    if (sequence > sEventSequence) {
+        if (speaker == 1 && !sPlayerShown) {
+            append_message(TRUE, sSubmitted); sPlayerShown = 1; sStage = 1;
+        } else if (speaker == 2 && !sNpcShown) {
+            if (!sPlayerShown) { append_message(TRUE, sSubmitted); sPlayerShown = 1; }
+            append_message(FALSE, line); sNpcShown = 1; sStage = 2;
+        } else if (speaker >= 3) append_message(speaker == 3, line);
+        sEventSequence = sequence;
+        sStarted = gGlobalTimer;
+    }
+    remove(path);
+    path_for(path, sizeof(path), ".sm64-npc-event-ack");
+    snprintf(temp, sizeof(temp), "%s.tmp", path);
+    f = fopen(temp, "w");
+    if (!f) return;
+    fprintf(f, "%s\n%d\n", token, sequence);
+    if (fclose(f) == 0) { remove(path); rename(temp, path); }
 }
 static void poll_reply(void) {
     char path[512], token[80], text[244];
     int action, amount;
     FILE *f;
-    if (!sWaiting || gGlobalTimer % 3) return;
-    if (gGlobalTimer - sStarted > 1800) {
+    if (!sWaiting) return;
+    if (gGlobalTimer - sStarted > CHAT_TIMEOUT) {
         sWaiting = 0;
         sToken[0] = 0;
+        strcpy(sText, sSubmitted);
+        clear_request();
         strcpy(sStatus, "BRIDGE TIMEOUT   ENTER RETRY   ESC CLOSE");
         return;
     }
@@ -189,8 +256,10 @@ static void poll_reply(void) {
     text[strcspn(text, "\r\n")] = 0;
     strncpy(sReply, text, sizeof(sReply)-1);
     sReply[sizeof(sReply)-1] = 0;
+    if (!sPlayerShown) append_message(TRUE, sSubmitted);
+    if (!sNpcShown) append_message(FALSE, sReply);
     sWaiting = 0;
-    sText[0] = 0;
+    sStage = 0;
     /* Execute from the NPC's behaviour callback, where gCurrentObject is correct. */
     strcpy(sChat->token, sToken);
     sChat->pending = action;
@@ -211,6 +280,7 @@ void ai_npc_update(void) {
         if (!sOpen) open_chat(sOffer);
         sOffer = NULL;
     }
+    poll_event();
     poll_reply();
 }
 void ai_npc_filter_controller(void) {
@@ -261,8 +331,11 @@ s32 ai_npc_key_down(s32 key) {
         }
         return 1;
     }
-    if (sWaiting || (sChat && sChat->pending)) return 1;
-    if (key == 28 && !repeated) { submit(); return 1; }
+    if (key == 0x148 || key == 0x149) { sScroll += key == 0x149 ? 16 : 3; return 1; }
+    if (key == 0x150 || key == 0x151) { sScroll -= key == 0x151 ? 16 : 3; if (sScroll < 0) sScroll = 0; return 1; }
+    if (key == 0x147) { sScroll = UI_LINES; return 1; }
+    if (key == 0x14F) { sScroll = 0; return 1; }
+    if (key == 28 && !repeated) { if (!sWaiting && !sChat->pending) submit(); return 1; }
     length = strlen(sText);
     if (key == 14 && length) sText[length - 1] = 0;
     else if ((c = key_char(key)) && length < INPUT_LIMIT) {
@@ -392,46 +465,180 @@ static u8 glyph(char c) {
         default: return DIALOG_CHAR_SPACE;
     }
 }
-static void draw_text(s16 x, s16 y, const char *text, s32 columns, s32 maxLines) {
-    u8 encoded[512];
-    s32 j = 0, col = 0, line = 1;
-    while (*text && j < 508) {
-        if (col >= columns) {
-            if (++line > maxLines) break;
-            encoded[j++] = DIALOG_CHAR_NEWLINE; col = 0;
+struct UiLine { s32 mario, heading; char text[97]; };
+static struct UiLine sLines[UI_LINES];
+static s32 sLineCount;
+
+static void ui_line(s32 mario, s32 heading, const char *text, s32 length) {
+    struct UiLine *line;
+    if (sLineCount >= UI_LINES) return;
+    line = &sLines[sLineCount++];
+    line->mario = mario; line->heading = heading;
+    if (length > 96) length = 96;
+    memcpy(line->text, text, length); line->text[length] = 0;
+}
+static void wrap_message(s32 mario, const char *text, s32 columns) {
+    s32 length, split;
+    const char *name = mario ? "MARIO" : (sChat->kind == 1 ? "TOAD" : "BOB-OMB BUDDY");
+    ui_line(mario, 1, name, strlen(name));
+    while (*text) {
+        length = strlen(text);
+        if (length > columns) {
+            length = columns;
+            for (split = length; split > columns / 2; split--)
+                if (text[split] == ' ') { length = split; break; }
         }
-        encoded[j++] = glyph(*text++); col++;
+        ui_line(mario, 0, text, length);
+        text += length;
+        while (*text == ' ') text++;
     }
+    ui_line(-1, 0, "", 0);
+}
+static void build_lines(s32 columns) {
+    s32 i;
+    char dots[4] = "...";
+    sLineCount = 0;
+    for (i = 0; i < sChat->historyCount; i++)
+        wrap_message(sChat->history[i].mario, sChat->history[i].text, columns);
+    if (sWaiting && sStage < 2) {
+        dots[1 + (gGlobalTimer / 12) % 3] = 0;
+        wrap_message(sStage == 0, dots, columns);
+    }
+}
+static void ui_box(f32 x, f32 y, f32 width, f32 height, u8 r, u8 g, u8 b, u8 alpha) {
+    create_dl_translation_matrix(MENU_MTX_PUSH, x, y, 0);
+    create_dl_scale_matrix(MENU_MTX_NOPUSH, width / 130.0f, height / 80.0f, 1);
+    gDPSetEnvColor(gDisplayListHead++, r, g, b, alpha);
+    gSPDisplayList(gDisplayListHead++, dl_draw_text_bg_box);
+    gSPPopMatrix(gDisplayListHead++, G_MTX_MODELVIEW);
+}
+static void ui_text(s16 x, s16 y, const char *text, s32 maxChars) {
+    u8 encoded[256];
+    s32 j = 0;
+    while (*text && j < maxChars && j < 254) encoded[j++] = glyph(*text++);
     encoded[j] = DIALOG_CHAR_TERMINATOR;
     print_generic_string(x, y, encoded);
 }
+static void ui_arrow(f32 x, f32 y, s32 up) {
+    Vtx *v = alloc_display_list(sizeof(Vtx) * 3);
+    s32 i;
+    if (!v) return;
+    memset(v, 0, sizeof(Vtx) * 3);
+    for (i = 0; i < 3; i++) {
+        v[i].v.ob[0] = x + (i == 0 ? 0 : i == 1 ? 12 : 6);
+        v[i].v.ob[1] = y + ((i == 2) == up ? 9 : 0);
+        v[i].v.cn[0] = v[i].v.cn[1] = v[i].v.cn[2] = v[i].v.cn[3] = 255;
+    }
+    gDPSetEnvColor(gDisplayListHead++, 255, 220, 100, 255);
+    gSPVertex(gDisplayListHead++, VIRTUAL_TO_PHYSICAL(v), 3, 0);
+    if (up) { gSP1Triangle(gDisplayListHead++, 0, 1, 2, 0); }
+    else { gSP1Triangle(gDisplayListHead++, 0, 2, 1, 0); }
+}
+void ai_npc_scroll(s32 direction) {
+    if (!sOpen) return;
+    sScroll += direction * 3;
+    if (sScroll < 0) sScroll = 0;
+    if (sScroll > UI_LINES) sScroll = UI_LINES;
+}
+void ai_npc_pointer_down(s32 x, s32 y, s32 width, s32 height) {
+    f32 ux, uy, right = GFX_DIMENSIONS_FROM_RIGHT_EDGE(0.0f) * 2;
+    f32 left = GFX_DIMENSIONS_FROM_LEFT_EDGE(0.0f) * 2;
+    if (!sOpen || width <= 0 || height <= 0) return;
+    ux = left + (right - left) * x / width;
+    uy = 480.0f * (height - y) / height;
+    if (ux < right - 48 || ux > right - 8) return;
+    if (uy >= 426 && uy <= 466) ai_npc_scroll(4);
+    if (uy >= 96 && uy <= 120) ai_npc_scroll(-4);
+}
+void ai_npc_frame_camera(Vec3f pos, Vec3f focus, f32 fov) {
+    f32 dx, dy, dz, length, horizontal, offset, framed[3];
+    s32 i, active = sOpen && live(sChat);
+    if (sFrameTimer != gGlobalTimer) {
+        sFrameTimer = gGlobalTimer;
+        sFrameBlend += ((active ? 1.0f : 0.0f) - sFrameBlend) * 0.16f;
+        if (!active && sFrameBlend < 0.002f) sFrameBlend = 0;
+    }
+    if (active) {
+        sFrameTarget[0] = (gMarioState->pos[0] + sChat->obj->oPosX) * 0.5f;
+        sFrameTarget[1] = (gMarioState->pos[1] + sChat->obj->oPosY) * 0.5f + 85;
+        sFrameTarget[2] = (gMarioState->pos[2] + sChat->obj->oPosZ) * 0.5f;
+    }
+    if (!sFrameBlend) return;
+    dx = sFrameTarget[0] - pos[0]; dy = sFrameTarget[1] - pos[1]; dz = sFrameTarget[2] - pos[2];
+    horizontal = sqrtf(dx*dx + dz*dz); length = sqrtf(dx*dx + dy*dy + dz*dz);
+    if (horizontal < 1 || length < 1) return;
+    if (fov < 10 || fov > 100) fov = 45;
+    offset = length * tanf(fov * 0.00872664626f) * GFX_DIMENSIONS_ASPECT_RATIO / 3.0f;
+    framed[0] = sFrameTarget[0] - dz / horizontal * offset;
+    framed[1] = sFrameTarget[1];
+    framed[2] = sFrameTarget[2] + dx / horizontal * offset;
+    for (i = 0; i < 3; i++) focus[i] += (framed[i] - focus[i]) * sFrameBlend;
+}
 void ai_npc_render(void) {
-    f32 left = GFX_DIMENSIONS_FROM_LEFT_EDGE(0.0f);
-    f32 width = GFX_DIMENSIONS_FROM_RIGHT_EDGE(0.0f) - left;
-    s32 columns = (s32)((width - 24) / 8.0f), length, offset;
+    f32 screenLeft = GFX_DIMENSIONS_FROM_LEFT_EDGE(0.0f) * 2;
+    f32 right = GFX_DIMENSIONS_FROM_RIGHT_EDGE(0.0f) * 2;
+    f32 width = (right - screenLeft) / 3, left = right - width, x, y;
+    s32 columns = (width - 44) / 8, i, index, start, rows = 19, length, offset;
+    char position[64];
+    const char *status;
     if (!sOpen || !live(sChat)) return;
+    if (columns < 12) columns = 12;
+    if (columns > 90) columns = 90;
+    build_lines(columns);
+    if (sScroll > sLineCount - rows) sScroll = sLineCount - rows;
+    if (sScroll < 0) sScroll = 0;
+    start = sLineCount - rows - sScroll;
+    if (start < 0) start = 0;
     create_dl_ortho_matrix();
-    create_dl_translation_matrix(MENU_MTX_PUSH, left, 154.0f, 0);
-    create_dl_scale_matrix(MENU_MTX_NOPUSH, width / 130.0f, 1.9f, 1);
-    gDPSetEnvColor(gDisplayListHead++, 0, 0, 0, 220);
-    gSPDisplayList(gDisplayListHead++, dl_draw_text_bg_box);
-    gSPPopMatrix(gDisplayListHead++, G_MTX_MODELVIEW);
+    /* A 2x logical canvas gives half-size conversation UI without changing 3D resolution. */
+    create_dl_scale_matrix(MENU_MTX_PUSH, 0.5f, 0.5f, 1);
+    ui_box(left, 480, width, 480, 13, 17, 24, 245);
+    ui_box(left, 480, width, 56, 26, 33, 44, 255);
+    ui_box(left+12, 72, width-24, 46, 32, 42, 52, 255);
+    for (i = 0; i < rows && start + i < sLineCount; i++) {
+        index = start + i; y = 402 - i * 16;
+        if (sLines[index].mario < 0) continue;
+        x = left + (sLines[index].mario ? 24 : 12);
+        ui_box(x, y+16, width-36, 16, sLines[index].mario ? 38 : 27,
+               sLines[index].mario ? 62 : 36, sLines[index].mario ? 67 : 47, 255);
+    }
+    ui_arrow(right-32, 442, 1); ui_arrow(right-32, 102, 0);
     gSPDisplayList(gDisplayListHead++, dl_ia_text_begin);
     gDPSetEnvColor(gDisplayListHead++, 255, 220, 100, 255);
-    draw_text(left+12, 137, sChat->kind == 1 ? "TOAD" : "BOB-OMB BUDDY", columns, 1);
-    gDPSetEnvColor(gDisplayListHead++, 255, 255, 255, 255);
-    draw_text(left+12, 119, sReply[0] ? sReply : "What would you like to say?", columns, 6);
+    ui_text(left+12, 460, sChat->kind == 1 ? "TOAD" : "BOB-OMB BUDDY", columns);
+    gDPSetEnvColor(gDisplayListHead++, 165, 180, 195, 255);
+    ui_text(left+12, 440, "CONVERSATION", columns);
+    for (i = 0; i < rows && start + i < sLineCount; i++) {
+        index = start + i; y = 402 - i * 16;
+        if (sLines[index].mario < 0) continue;
+        x = left + (sLines[index].mario ? 28 : 16);
+        if (sLines[index].heading) { gDPSetEnvColor(gDisplayListHead++, 255, 220, 100, 255); }
+        else { gDPSetEnvColor(gDisplayListHead++, 235, 240, 245, 255); }
+        ui_text(x, y, sLines[index].text, columns);
+    }
+    status = sWaiting ? (sStage == 0 ? "PREPARING MARIO VOICE" : sStage == 1 ? "THINKING..." : "SPEAKING...") :
+                       sChat->pending ? "ESC: LET THEM ACT" : "ENTER: SEND";
+    if (!sWaiting && strstr(sStatus, "TIMEOUT")) status = "TIMED OUT: ENTER TO RETRY";
     gDPSetEnvColor(gDisplayListHead++, 255, 220, 100, 255);
-    draw_text(left+12, 27, sStatus, columns, 1);
-    gDPSetEnvColor(gDisplayListHead++, 255, 255, 255, 255);
-    length = strlen(sText); offset = length > columns-2 ? length-(columns-2) : 0;
-    draw_text(left+12, 10, sText[0] ? sText+offset : ">", columns, 1);
+    ui_text(left+12, 84, status, columns);
+    gDPSetEnvColor(gDisplayListHead++, 235, 240, 245, 255);
+    length = strlen(sText); offset = length > columns*2 ? length-columns*2 : 0;
+    ui_text(left+18, 54, sText[0] ? sText+offset : "Type a message...", columns);
+    if (length-offset > columns) ui_text(left+18, 38, sText+offset+columns, columns);
+    snprintf(position, sizeof(position), "UP/DOWN: SCROLL  ESC: CLOSE");
+    gDPSetEnvColor(gDisplayListHead++, 165, 180, 195, 255);
+    ui_text(left+12, 10, position, columns+2);
     gSPDisplayList(gDisplayListHead++, dl_ia_text_end);
+    gSPPopMatrix(gDisplayListHead++, G_MTX_MODELVIEW);
 }
+
 #else
 void ai_npc_reset(void) {}
 void ai_npc_update(void) {}
 void ai_npc_render(void) {}
+void ai_npc_scroll(UNUSED s32 direction) {}
+void ai_npc_pointer_down(UNUSED s32 x, UNUSED s32 y, UNUSED s32 w, UNUSED s32 h) {}
+void ai_npc_frame_camera(UNUSED Vec3f pos, UNUSED Vec3f focus, UNUSED f32 fov) {}
 void ai_npc_filter_controller(void) {}
 s32 ai_npc_key_down(UNUSED s32 key) { return 0; }
 s32 ai_npc_key_up(UNUSED s32 key) { return 0; }

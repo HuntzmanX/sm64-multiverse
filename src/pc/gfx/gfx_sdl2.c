@@ -1,4 +1,5 @@
 #include "../compat.h"
+#include "game/ai_npc.h"
 
 #if !defined(__linux__) && !defined(__BSD__) && defined(ENABLE_OPENGL)
 
@@ -256,6 +257,13 @@ static void gfx_sdl_handle_events(void) {
                 gfx_sdl_onkeyup(event.key.keysym.scancode);
                 break;
 #endif
+            case SDL_MOUSEWHEEL:
+                ai_npc_scroll(event.wheel.y);
+                break;
+            case SDL_MOUSEBUTTONDOWN:
+                if (event.button.button == SDL_BUTTON_LEFT)
+                    ai_npc_pointer_down(event.button.x, event.button.y, window_width, window_height);
+                break;
             case SDL_WINDOWEVENT:
                 if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
                     window_width = event.window.data1;

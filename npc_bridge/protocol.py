@@ -44,6 +44,11 @@ def request_from_file(path: Path) -> dict:
         raise ValueError("Invalid NPC capabilities")
     if not isinstance(value.get("player_text"), str) or not 1 <= len(value["player_text"].strip()) <= 120:
         raise ValueError("Player text must be 1-120 characters")
+    if type(value.get("protocol_version", 1)) is not int or value.get("protocol_version", 1) not in (1, 2):
+        raise ValueError("Unsupported conversation protocol")
+    count = value.get("history_count", 0)
+    if type(count) is not int or not 0 <= count <= 32:
+        raise ValueError("Invalid history count")
     return value
 
 
@@ -93,3 +98,15 @@ def discover_runtime(root: Path) -> Path:
     candidates.extend((root / "build").glob("*/.sm64-npc-request.json"))
     existing = [p for p in candidates if p.is_file()]
     return max(existing, key=lambda p: p.stat().st_mtime_ns).parent if existing else root
+
+
+def event_packet(token: str, sequence: int, speaker: int, text: str) -> str:
+    """Version 2 reveal events: Mario=1, NPC=2, historical Mario/NPC=3/4."""
+    if not TOKEN.fullmatch(token) or type(sequence) is not int or sequence < 1:
+        raise ValueError("Invalid reveal event identity")
+    if type(speaker) is not int or speaker not in (1, 2, 3, 4):
+        raise ValueError("Invalid reveal speaker")
+    text = ascii_text(text)
+    if not text:
+        raise ValueError("Empty reveal event")
+    return f"{token}\n{sequence} {speaker}\n{text}\n"

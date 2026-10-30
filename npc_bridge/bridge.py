@@ -8,15 +8,16 @@ import os
 import re
 import time
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 from typing import Literal
 
 from openai import OpenAI
 from pydantic import BaseModel, ConfigDict, Field
 
 from memory import acknowledge, load_memory, npc_memory, save_memory
-from speech import SpeechConfig, SpeechWorker
-from protocol import (allowed_actions, ascii_text, atomic_write, discover_runtime,
-                      read_json, request_from_file, response_packet, validate_action)
+from speech import SpeechConfig
+from turns import ConversationTurn, current_request
+from protocol import (allowed_actions, discover_runtime, read_json, request_from_file, validate_action)
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -64,13 +65,6 @@ def original_dialogue(dialog_id: int) -> str:
     return " ".join("".join(ast.literal_eval(s) for s in strings).split())[:2000]
 
 
-def current_request(path: Path, token: str) -> bool:
-    try:
-        return request_from_file(path)["id"] == token
-    except (OSError, ValueError):
-        return False
-
-
 def generate(client, model: str, request: dict, entry: dict) -> NpcReply:
     state = dict(request)
     state["coin_budget"] = min(request["coin_budget"], max(0, 10 - entry["coins_given"]))
@@ -100,23 +94,21 @@ def main() -> int:
         parser.error("Set OPENAI_API_KEY in this terminal first")
     explicit = args.runtime_dir.resolve() if args.runtime_dir else None
     client = OpenAI(timeout=40.0, max_retries=0)
-    speech = None
+    config = None
     if not args.no_voice:
         try:
             config = SpeechConfig.from_environment()
             if config:
-                speech = SpeechWorker(config)
                 print(f"NPC voice enabled ({config.model}).", flush=True)
         except ValueError as exc:
             print(f"Voice configuration error: {exc}. Text chat continues.", flush=True)
+    pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="npc-prepare")
     runtime, memory, memory_path = None, None, None
     print("NPC companion ready. Talk normally, then reply; T chats with a nearby NPC. Ctrl+C exits.", flush=True)
     try:
         while True:
             selected = explicit or discover_runtime(ROOT)
             if selected != runtime:
-                if speech:
-                    speech.cancel()
                 runtime = selected
                 if not runtime.is_dir():
                     parser.error(f"Runtime directory does not exist: {runtime}")
@@ -141,41 +133,31 @@ def main() -> int:
             if token in memory["handled"]:
                 time.sleep(0.1)
                 continue
-            if speech:
-                speech.cancel()
             memory["handled"] = (memory["handled"] + [token])[-64:]
             save_memory(memory_path, memory)
             print(f"Mario -> {request['kind']}: {request['player_text']}", flush=True)
+            turn = ConversationTurn(request, runtime, config, pool)
             try:
                 entry = npc_memory(memory, request["npc"])
-                reply = generate(client, args.model, request, entry)
-                if not current_request(request_path, token):
-                    print("Discarded a superseded reply.", flush=True)
-                    continue
-                text = ascii_text(reply.reply)
-                packet = response_packet(token, text, reply.action, reply.coins)
-                # Save before publishing; a crash cannot replay an acknowledged gift.
-                memory["pending"][token] = {"npc": request["npc"], "player": request["player_text"],
-                    "reply": text, "action": reply.action, "amount": reply.coins}
-                # Bound abandoned turns (e.g. leaving the area before closing the chat).
-                memory["pending"] = dict(list(memory["pending"].items())[-64:])
-                save_memory(memory_path, memory)
-                atomic_write(runtime / ".sm64-npc-response", packet)
-                print(f"{request['kind']}: {text} [{reply.action}]", flush=True)
-                if speech:
-                    speech.speak(request["kind"], text, reply.emotion,
-                                 lambda path=request_path, token=token: current_request(path, token))
+
+                def remember(reply, text):
+                    memory["pending"][token] = {"npc": request["npc"], "player": request["player_text"],
+                        "reply": text, "action": reply.action, "amount": reply.coins}
+                    memory["pending"] = dict(list(memory["pending"].items())[-64:])
+                    save_memory(memory_path, memory)
+                    print(f"{request['kind']}: {text} [{reply.action}]", flush=True)
+
+                turn.run(lambda client=client, request=request, entry=entry: generate(client, args.model, request, entry), entry, remember)
             except Exception as exc:
-                # Detailed API failures remain in the terminal; never execute a partial response.
                 print(f"NPC request failed ({type(exc).__name__}): {exc}", flush=True)
-                if current_request(request_path, token):
-                    atomic_write(runtime / ".sm64-npc-response", response_packet(
-                        token, "Sorry, I lost my train of thought. Could you say that again?"))
+                try:
+                    turn.fail()
+                except Exception as sync_exc:
+                    print(f"Conversation sync failed ({type(sync_exc).__name__}); close and reopen the chat.", flush=True)
     except KeyboardInterrupt:
         print("\nNPC companion stopped.")
     finally:
-        if speech:
-            speech.close()
+        pool.shutdown(wait=False, cancel_futures=True)
     return 0
 
 

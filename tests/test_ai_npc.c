@@ -16,6 +16,9 @@ s16 sCurrPlayMode, gCurrSaveFileNum = 1, gCurrLevelNum = 6, gCurrAreaIndex = 1;
 s16 gCurrCourseNum, gCurrActNum = 1;
 u32 gGlobalTimer = 10;
 f32 gSineTable[0x1400];
+#ifdef WIDESCREEN
+struct GfxDimensions gfx_current_dimensions = {1280, 720, 16.0f / 9.0f};
+#endif
 static int spawnedCoins, cannonUnlocks, knockbacks;
 static struct Surface surface;
 s16 get_dialog_id(void) { return DIALOG_NONE; }
@@ -32,6 +35,35 @@ void cur_obj_update_floor_and_walls(void) {}
 void cur_obj_move_standard(s16 degrees) {}
 s32 drop_and_set_mario_action(struct MarioState *m, u32 action, u32 arg) { knockbacks++; return 1; }
 
+/* Record UI draw calls without game textures to exercise layout and half scaling. */
+static Gfx drawBuffer[8192];
+Gfx *gDisplayListHeadInChunk = drawBuffer;
+Gfx *gDisplayListEndInChunk = drawBuffer + 8192;
+Gfx dl_ia_text_begin[1], dl_ia_text_end[1], dl_draw_text_bg_box[1];
+static u8 vertexArena[1024];
+static s32 vertexUsed, textDraws, scaleCalls, translateCalls;
+static f32 firstScale, panelLeft;
+Gfx **alloc_next_dl(void) { assert(!"UI display list overflow"); return &gDisplayListHeadInChunk; }
+void *alloc_display_list(u32 size) {
+    void *ptr = vertexArena + vertexUsed;
+    vertexUsed += (size+7) & ~7;
+    assert(vertexUsed <= sizeof(vertexArena));
+    return ptr;
+}
+void create_dl_ortho_matrix(void) {}
+void create_dl_translation_matrix(s8 op, f32 x, f32 y, f32 z) {
+    if (translateCalls++ == 0) panelLeft = x;
+}
+void create_dl_scale_matrix(s8 op, f32 x, f32 y, f32 z) {
+    if (scaleCalls++ == 0) { firstScale = x; assert(x == y && x == 0.5f); }
+}
+void print_generic_string(s16 x, s16 y, const u8 *text) {
+    s32 i;
+    f32 right = GFX_DIMENSIONS_FROM_RIGHT_EDGE(0.0f) * 2;
+    assert(x >= panelLeft && x < right && y >= 0 && y <= 464);
+    for (i = 0; text[i] != DIALOG_CHAR_TERMINATOR; i++) assert(i < 255);
+    textDraws++;
+}
 static void tick(void) { ai_npc_tick(&npc, 2); }
 static void key(int scan) { ai_npc_key_down(scan); ai_npc_key_up(scan); }
 static void fixture(void) {
@@ -51,6 +83,78 @@ static void reply(const char *token, int action, int count) {
     fprintf(f, "%s\n%d %d\nHello Mario!\n", token, action, count); fclose(f);
     gGlobalTimer += (3 - gGlobalTimer % 3) % 3;
     tick(); poll_reply();
+}
+static void reveal(const char *token, s32 sequence, s32 speaker, const char *text) {
+    FILE *f = fopen(".sm64-npc-event", "w"); assert(f);
+    fprintf(f, "%s\n%d %d\n%s\n", token, sequence, speaker, text); fclose(f);
+    tick(); poll_event();
+}
+static void check_ui_and_timing(void) {
+    char token[80], ack[128], packet[2048];
+    FILE *f;
+    s32 i;
+    f32 pos[3] = {0, 85, 1000}, focus[3], ndc, previous;
+    fixture(); key(20); type_hello(); key(28); strcpy(token, sToken);
+    assert(!sText[0] && sChat->historyCount == 0 && sStage == 0);
+    f = fopen(".sm64-npc-request.json", "r"); assert(f);
+    packet[fread(packet, 1, sizeof(packet)-1, f)] = 0; fclose(f);
+    assert(strstr(packet, "\"protocol_version\":2") && strstr(packet, "\"history_count\":0"));
+    build_lines(30); assert(sLineCount == 3 && !strcmp(sLines[0].text, "MARIO"));
+    reveal("0-0-0", 1, 1, "old"); assert(sChat->historyCount == 0);
+    reveal(token, 1, 1, "ignored in favour of actual player input");
+    assert(sChat->historyCount == 1 && sStage == 1);
+    assert(sChat->history[0].mario && !strcmp(sChat->history[0].text, "hello"));
+    f = fopen(".sm64-npc-event-ack", "r"); assert(f);
+    assert(fgets(ack, sizeof(ack), f)); ack[strcspn(ack, "\r\n")] = 0;
+    assert(!strcmp(ack, token)); assert(fgets(ack, sizeof(ack), f) && atoi(ack) == 1); fclose(f);
+    reveal(token, 1, 1, "duplicate"); assert(sChat->historyCount == 1);
+    build_lines(30); assert(!strcmp(sLines[sLineCount-3].text, "BOB-OMB BUDDY"));
+    reveal(token, 2, 2, "Hello Mario!");
+    assert(sChat->historyCount == 2 && sStage == 2 && sWaiting && !sChat->pending);
+    assert(!sChat->history[1].mario && !strcmp(sChat->history[1].text, "Hello Mario!"));
+    reply(token, NPC_FOLLOW, 0);
+    assert(!sWaiting && sChat->historyCount == 2 && sChat->pending == NPC_FOLLOW);
+    key(1); tick(); assert(sNpcs[0].mode == NPC_FOLLOW);
+
+    fixture(); key(20); type_hello(); key(28); strcpy(token, sToken);
+    reveal(token, 1, 3, "Old Mario message"); reveal(token, 2, 4, "Old NPC reply");
+    assert(sChat->historyCount == 2 && !sPlayerShown && !sNpcShown && sStage == 0);
+    reveal(token, 3, 1, "hello"); reveal(token, 4, 2, "New reply");
+    assert(sChat->historyCount == 4 && sPlayerShown && sNpcShown);
+    for (i = 0; i < 40; i++) append_message(i % 2, "A long message that should wrap neatly at a word boundary in the side panel.");
+    assert(sChat->historyCount == HISTORY_MESSAGES);
+    build_lines(30); assert(sLineCount < UI_LINES);
+    for (i = 0; i < sLineCount; i++) assert(strlen(sLines[i].text) <= 30);
+    key(0x148); assert(sScroll == 3); key(0x150); assert(sScroll == 0);
+    ai_npc_scroll(-100); assert(sScroll == 0);
+    ai_npc_pointer_down(980, 80, 1000, 1000); assert(sScroll == 12);
+    ai_npc_pointer_down(980, 780, 1000, 1000); assert(sScroll == 0);
+    key(0x147); assert(sScroll == UI_LINES); key(0x14F); assert(sScroll == 0);
+    scaleCalls = translateCalls = textDraws = vertexUsed = 0;
+    ai_npc_render();
+    assert(firstScale == 0.5f && textDraws >= 10 && textDraws <= 26);
+    assert(fabsf(panelLeft - (GFX_DIMENSIONS_FROM_RIGHT_EDGE(0.0f)*2 -
+           (GFX_DIMENSIONS_FROM_RIGHT_EDGE(0.0f)-GFX_DIMENSIONS_FROM_LEFT_EDGE(0.0f))*2/3)) < 1);
+    key(0x147); ai_npc_render(); assert(sScroll > 0 && sScroll < UI_LINES);
+
+    /* At steady state the pair's midpoint projects to x=1/3; camera position is untouched. */
+    fixture(); npc.oPosX = 0; key(20);
+    for (i = 0; i < 80; i++) {
+        gGlobalTimer++; tick();
+        focus[0] = focus[2] = 0; focus[1] = 85;
+        ai_npc_frame_camera(pos, focus, 45);
+    }
+    assert(pos[0] == 0 && pos[1] == 85 && pos[2] == 1000);
+    ndc = -focus[0] / (1000 * tanf(45 * 0.00872664626f) * GFX_DIMENSIONS_ASPECT_RATIO);
+    assert(fabsf(ndc + 1.0f/3) < 0.001f);
+    key(1); previous = focus[0];
+    for (i = 0; i < 80; i++) {
+        gGlobalTimer++; focus[0] = focus[2] = 0; focus[1] = 85;
+        ai_npc_frame_camera(pos, focus, 45);
+        assert(focus[0] <= previous); previous = focus[0];
+    }
+    assert(sFrameBlend == 0 && focus[0] == 0);
+    remove(".sm64-npc-event"); remove(".sm64-npc-event-ack");
 }
 int main(void) {
     char temp[] = "/tmp/sm64-npc-test-XXXXXX", token[80];
@@ -89,7 +193,7 @@ int main(void) {
     key(1); assert(!sOpen);
 
     fixture(); key(20); type_hello(); key(28);
-    gGlobalTimer += 1803; tick(); poll_reply(); assert(!sWaiting && !sToken[0]);
+    gGlobalTimer += CHAT_TIMEOUT + 3; tick(); poll_reply(); assert(!sWaiting && !sToken[0]);
     key(1); assert(!sOpen);
 
     fixture(); key(20); type_hello(); key(28); strcpy(token, sToken);
@@ -103,7 +207,8 @@ int main(void) {
     assert(npc.oOpacity == 255); key(1);
     assert(npc.oOpacity == 81 && npc.oToadMessageState == 0);
 
-    puts("Game-side NPC tests passed: input, stale replies, cancellation, single execution, capabilities, timeout, hostility.");
+    check_ui_and_timing();
+    puts("Game-side NPC tests passed: UI history, scroll, voice reveals, camera framing, input, stale replies, cancellation, single execution, capabilities, timeout, hostility.");
     ai_npc_reset();
     remove(".sm64-npc-response"); remove(".sm64-npc-result.json");
     assert(chdir("/") == 0); rmdir(temp);

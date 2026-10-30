@@ -1,4 +1,5 @@
 #include "../compat.h"
+#include "game/ai_npc.h"
 
 #if defined(__linux__) || defined(__BSD__)
 #include <stdlib.h>
@@ -322,7 +323,7 @@ static void gfx_glx_init(const char *game_name, bool start_in_fullscreen) {
     Colormap cmap = XCreateColormap(glx.dpy, glx.root, vi->visual, AllocNone);
     XSetWindowAttributes swa;
     swa.colormap = cmap;
-    swa.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | FocusChangeMask;
+    swa.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | FocusChangeMask | ButtonPressMask;
     glx.win = XCreateWindow(glx.dpy, glx.root, 0, 0, DESIRED_SCREEN_WIDTH, DESIRED_SCREEN_HEIGHT, 0, vi->depth, InputOutput, vi->visual, CWColormap | CWEventMask, &swa);
     
     glx.atom_wm_state = XInternAtom(glx.dpy, "_NET_WM_STATE", False);
@@ -419,6 +420,15 @@ static void gfx_glx_handle_events(void) {
         if (xev.type == FocusOut) {
             if (glx.on_all_keys_up != NULL) {
                 glx.on_all_keys_up();
+            }
+        }
+        if (xev.type == ButtonPress) {
+            if (xev.xbutton.button == Button4) ai_npc_scroll(1);
+            if (xev.xbutton.button == Button5) ai_npc_scroll(-1);
+            if (xev.xbutton.button == Button1) {
+                uint32_t width, height;
+                gfx_glx_get_dimensions(&width, &height);
+                ai_npc_pointer_down(xev.xbutton.x, xev.xbutton.y, width, height);
             }
         }
         if (xev.type == KeyPress || xev.type == KeyRelease) {

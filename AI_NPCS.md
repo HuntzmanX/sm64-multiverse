@@ -1,4 +1,4 @@
-# SM64 AI NPCs — first playable prototype
+# SM64 AI NPCs — conversations, voices and side panel
 
 Branch: `feature/ai-npcs`, based on vanilla `master`. You control Mario with the
 normal game controls and camera. A separate Python companion gives Toads and
@@ -58,85 +58,104 @@ Use `--model YOUR_MODEL` or `OPENAI_MODEL` if your account uses a different
 model supporting Responses structured output. Each submitted message makes an
 API request using your own account; ordinary gameplay makes no requests.
 
-## Toad voice (Fish Audio)
+## Voices and conversation timing
 
-Toad's **AI replies** can now use the reference voice supplied for this project.
-The default reference ID is `91a1e83b577448fbac8ef6fe050f67c9`; the default Fish
-model is explicitly `s2.1-pro-free`. Native dialogue is unchanged. Bob-omb
-Buddies remain silent unless you configure their own reference voice.
+The companion now reads **your typed messages as Mario**, then lets the NPC
+answer. The defaults are:
 
-Set a Fish API key in the terminal running the companion, alongside your
-existing OpenAI key. Never put a key in source code or commit it.
+| Character | Fish reference ID |
+| --- | --- |
+| Mario | `a564085babeb4d14802ea31b7b6c2869` |
+| Toad (updated manic voice) | `e273b9cb9eaf4c5caefb83f6fefa7ac3` |
+| Bob-omb Buddy | Unset; text replies until a voice is selected |
+
+The Fish model is explicitly `s2.1-pro-free`. Set a Fish key in the companion's
+terminal alongside your existing OpenAI key:
 
 ```powershell
 $env:FISH_AUDIO_API_KEY = "your-fish-key"
 python npc_bridge/bridge.py
 ```
 
-Bash equivalent: `export FISH_AUDIO_API_KEY="your-fish-key"`.
-No additional Python packages are needed for voice. Native Windows Python uses
-Windows' built-in MP3 playback through WinMM/MCI. On Linux/macOS or a non-native
-MSYS Python, install `ffplay` (FFmpeg), or launch the companion with native
-Windows Python. Game audio and speech play simultaneously through the computer;
-this version does not add positional sound or music ducking in the engine.
+Bash equivalent: `export FISH_AUDIO_API_KEY="your-fish-key"`. No additional Python
+packages are needed. Native Windows Python uses Windows' built-in MP3 playback
+through WinMM/MCI. Linux/macOS or non-native MSYS Python need `ffplay` (FFmpeg),
+or you can run the companion with native Windows Python.
 
-Text appears immediately after the OpenAI reply; a separate worker requests and
-plays the MP3. Delivery can be neutral, excited, happy, sad, angry or whispering.
-Tags are added only to the speech request, never displayed as dialogue. The
-worker sends the reply text, selected tag and voice reference to Fish Audio.
-Audio is temporary and removed after playback. Nothing is generated on idle.
+Each submitted turn works as follows:
 
-**Escape stops speech** when closing a chat. Leaving the area, submitting a new
-message, or stopping the companion also cancels stale playback. Cancelling an
-HTTP request may take until its next chunk/timeout; its audio is then discarded.
-An accepted game action still executes after Escape. Speech errors print a short
-terminal message and do not block the reply or the NPC's action.
+1. A Mario `...` bubble appears while his voice is prepared. The NPC's OpenAI
+   reply is prepared concurrently.
+2. Mario's message is revealed when his audio starts. The latest NPC bubble
+   shows animated dots while its reply/voice is being prepared. NPC audio is
+   prefetched during Mario's playback; the two TTS downloads do not overlap.
+3. Once Mario finishes and the NPC audio is ready, the NPC's message appears at
+   playback start. The two voices never talk over each other.
+4. After the NPC finishes, you can send the next message or close the panel to
+   let an accepted action run.
 
-Optional environment settings:
+The Windows audio-start callback publishes each reveal event; the game shows it
+on its next frame and acknowledges it. This is frame-level synchronization,
+not word highlighting or lip sync. On the ffplay fallback, the reveal occurs at
+player launch, so decoder/device buffering can introduce a small difference.
+If a voice is disabled or fails, its text appears without audio and the turn
+continues. Stage tags stay out of the displayed dialogue.
 
-| Setting | Default / effect |
+Escape, an area change, or a request timeout invalidates old audio and replies.
+Escaping during a turn cancels its unfinished action. Once a turn has completed,
+Escape allows its accepted action to run. Temporary MP3s are removed after
+playback. Game audio and voices mix through the computer; positional speech
+and music ducking are not implemented.
+
+The model still makes one OpenAI request per message. Fish receives each voiced
+message's text, its reference ID and an optional NPC expression tag. There are
+no requests while idle. Keys remain in the environment and are never saved.
+
+| Optional setting | Default / effect |
 | --- | --- |
-| `FISH_AUDIO_TOAD_VOICE` | The Toad reference ID above; empty disables Toad speech |
-| `FISH_AUDIO_BOBOMB_VOICE` | Empty; set your chosen reference ID to enable Buddy speech |
+| `FISH_AUDIO_MARIO_VOICE` | Mario ID above; set empty to disable reading player messages |
+| `FISH_AUDIO_TOAD_VOICE` | New Toad ID above; empty disables Toad speech |
+| `FISH_AUDIO_BOBOMB_VOICE` | Empty; set a reference ID to enable Buddy speech |
 | `FISH_AUDIO_MODEL` | `s2.1-pro-free`; other recognized models must be chosen explicitly |
 | `SM64_NPC_VOICE_VOLUME` | `0.8`; range `0`–`1` |
 
-Use `python npc_bridge/bridge.py --no-voice` to disable speech, or leave
-`FISH_AUDIO_API_KEY` unset. Restart the companion after changing its environment.
-After updating this branch, **rebuild the game once** for the Escape/area-change
-cancellation signal. Fish API credentials/audio are not needed for automated tests.
+`--no-voice` or an unset `FISH_AUDIO_API_KEY` gives the same panel and history
+with text-only replies. Restart the companion after changing environment
+settings. Explicit voice overrides take priority over these new defaults.
+
+**Rebuild the game and restart the companion together after this update.** The
+new reveal/acknowledgement protocol is needed for both sides of the conversation.
 
 API reference: https://docs.fish.audio/api-reference/endpoint/openapi-v1/text-to-speech
 
-## Playing
+## Panel, controls and camera
 
-- Speak to Toad or a pink Bob-omb Buddy normally. Finish their original dialogue
-  and any cannon/star sequence; a reply box then opens automatically.
-- **T** opens a chat with the closest supported NPC within 650 game units.
-  This also lets you talk to someone who is following or chasing you.
-- Type your message, up to 120 characters; **Enter** sends it.
-- **Escape** closes the conversation. If a response is still loading, it cancels
-  the turn. If an action is queued, closing the box lets the NPC perform it.
-- Ordinary conversation can continue in the same box. When an action is queued,
-  close the box, let them act, then press T to speak again.
-- Mario's movement/buttons are suppressed while typing, including controller
-  input. The world continues running; this prototype is not a pause menu.
-- The keyboard editor uses the same US scancode approach as the AI-control mod.
-  Letters, digits, Shift, punctuation and Backspace work; paste, Unicode, cursor
-  editing and voice input are not implemented.
+- Finish an NPC's normal dialogue and any cannon/star sequence to open the
+  conversation panel, or press **T** near a supported NPC.
+- The panel occupies the **right third** of the widescreen view, with separate
+  Mario/NPC bubbles and half-size text. UI scaling is independent of game
+  resolution; no doubling of render resolution or changes to the normal HUD
+  are needed.
+- The camera gently changes its aim so the two characters' midpoint sits near
+  the **left third** of the screen. Its position stays under the normal camera's
+  control, preserving collision placement. Framing eases back after closing.
+- **Up/Down**, **Page Up/Page Down**, **Home/End**, the **mouse wheel**, or clicking
+  the **on-screen arrows** scroll the transcript. A new message follows the
+  newest entry automatically.
+- Type up to 120 characters. **Enter** sends when the current turn is finished
+  and no action is awaiting execution. You can draft your next message during
+  playback. **Escape** closes/cancels as described above.
+- History remains visible when reopening the same NPC's chat in an area.
+  The latest 16 acknowledged turns are restored from persistent memory on the
+  first submitted message after entering a new area or restarting the game.
+- Mario's gameplay buttons are suppressed while chatting, including controller
+  input. The world continues running; the panel is not a pause menu.
+- The US scancode editor supports letters, digits, Shift, punctuation and
+  Backspace. Paste, Unicode, cursor editing and voice input are not implemented.
 
-Try the first Bob-omb Buddy in Bob-omb Battlefield:
-
-- "What's your job here?"
-- "Come with me, I could use some backup."
-- "Can you spare two coins?"
-- "You're a rubbish bomb. I bet you couldn't even catch me."
-- "Okay, sorry! Let's be friends again."
-
-Toad is a worried but helpful castle attendant. Pink Bob-omb Buddies are proud,
-playful cannon enthusiasts who may take offence. Neither is required to obey.
-Their original US dialogue, course, area, act, star count and current AI movement
-mode provide context for their replies.
+Try asking Toad to whisper a secret, then typing an indignant reply as Mario.
+Neither NPC is required to obey you. Their original US dialogue, course, area,
+act, star count, conversation history and current AI movement mode provide context.
 
 ## Actions in this version
 
@@ -180,8 +199,8 @@ the supplied game context. API keys stay in the companion's environment.
 Runtime files, keys in `.env`, and conversation memory are ignored by git.
 
 If the companion is stopped, Escape always exits the box. Requests time out
-after about 60 seconds of active gameplay. API/schema errors print details in
-the companion terminal and produce a short retry response without an action.
+after about 120 seconds of active gameplay without a new stage reveal.
+API/schema errors print details in the companion terminal and produce a short retry response without an action.
 
 ## Validation
 
@@ -192,11 +211,14 @@ bash tests/check_ai_npc.sh
 
 The checks syntax-compile all touched C translation units, verify the new N64
 no-op implementation, run the actual C conversation/action state machine with
-stub engine functions, and run Python protocol/memory/model-boundary tests with
-a mocked SDK client. No API calls or ROM are required for those checks.
+stub engine functions at 4:3 and 16:9, and check history wrapping, half scaling,
+scroll buttons, reveal acknowledgement, and camera projection/easing. Python
+tests cover protocol, memory, model boundaries, cancellation, audio start
+callbacks, ordered playback and parallel preparation using mocked services. No API calls or ROM are required for those checks.
 
 A full linked build and visual/play test require your local extracted game
-assets. In particular, verify dialogue timing, readability, Toad movement,
-Buddy collision/knockback and controller input on the Windows build.
+assets. In particular, verify the panel visually, camera composition in different rooms,
+real audio timing, Toad movement, Buddy collision/knockback and controller input
+on the Windows build.
 The N64 target retains vanilla behaviour; the companion feature targets the
 native PC port. Browser/console text entry is not supported.

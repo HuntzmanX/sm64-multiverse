@@ -25,6 +25,7 @@
 #include "gfx_direct3d_common.h"
 #include "gfx_screen_config.h"
 #include "gfx_pc.h"
+#include "game/ai_npc.h"
 
 #define DECLARE_GFX_DXGI_FUNCTIONS
 #include "gfx_dxgi.h"
@@ -237,6 +238,13 @@ static LRESULT CALLBACK gfx_dxgi_wnd_proc(HWND h_wnd, UINT message, WPARAM w_par
             if (dxgi.on_all_keys_up != nullptr) {
                 dxgi.on_all_keys_up();
             }
+            break;
+        case WM_MOUSEWHEEL:
+            ai_npc_scroll((short)HIWORD(w_param) / WHEEL_DELTA);
+            break;
+        case WM_LBUTTONDOWN:
+            ai_npc_pointer_down((short)LOWORD(l_param), (short)HIWORD(l_param),
+                                dxgi.current_width, dxgi.current_height);
             break;
         case WM_KEYDOWN:
             onkeydown(w_param, l_param);
