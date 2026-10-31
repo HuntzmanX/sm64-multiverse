@@ -129,8 +129,13 @@ starts in the NPC's next behavior update; no Escape or confirmation is needed.
 With voice disabled or playback unavailable, the last line stays readable for
 1.5–8 seconds before an automatic close. Escape cancels during that interval too.
 AI-reply and player-message MP3s are
-temporary and removed after playback. Game audio and voices mix through the computer; positional speech
-and music ducking are not implemented.
+temporary and removed after playback. Background music smoothly drops to **50% of
+its current level while a voice clip plays**, including Mario, NPC replies and
+cached announcements. It returns after completion, skipping, cancellation or an
+audio error. Other game sound effects and jingles keep their normal volume;
+existing game music fades still apply. No music ducking occurs during generation
+or text-only replies. A short-lived playback heartbeat restores music if the
+companion exits unexpectedly. Positional speech is not implemented.
 
 The model still makes one OpenAI request per message. Fish receives each voiced
 message's text, its reference ID and any performance directions. There are

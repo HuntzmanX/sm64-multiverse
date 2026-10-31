@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/stat.h>
 #if defined(_MSC_VER) || defined(__MINGW32__)
 #include <sys/utime.h>
 #else
@@ -64,6 +65,7 @@ static struct Object *sNativeObject;
 static char sNativeText[1024], sNativeToken[80];
 static u32 sNativeFrame;
 static s32 sNativeFinished;
+static f32 sSpeechMusicVolume = 1.0f;
 static char sStatus[96] = "ENTER SEND   ESC CLOSE";
 static const char *sActions[] = { "none", "follow", "flee", "approach", "stop",
                                  "hostile", "friendly", "give_coins", "open_cannon" };
@@ -72,6 +74,22 @@ static void path_for(char *out, size_t size, const char *name) {
     const char *dir = getenv("SM64_NPC_RUNTIME_DIR");
     if (dir && dir[0]) snprintf(out, size, "%s/%s", dir, name);
     else snprintf(out, size, "%s", name);
+}
+f32 ai_npc_music_volume(void) { return sSpeechMusicVolume; }
+static void update_speech_music(void) {
+    char path[512];
+    struct stat info;
+    f32 target = 1.0f;
+    path_for(path, sizeof(path), ".sm64-npc-speaking");
+    if (stat(path, &info) == 0 && (info.st_mode & S_IFMT) == S_IFREG
+        && difftime(time(NULL), info.st_mtime) < 2.0) target = 0.5f;
+    if (sSpeechMusicVolume > target) {
+        sSpeechMusicVolume -= 0.1f;
+        if (sSpeechMusicVolume < target) sSpeechMusicVolume = target;
+    } else if (sSpeechMusicVolume < target) {
+        sSpeechMusicVolume += 0.05f;
+        if (sSpeechMusicVolume > target) sSpeechMusicVolume = target;
+    }
 }
 static s32 live(struct Npc *n) {
     return n && n->obj && gGlobalTimer - n->seen < 3
@@ -267,7 +285,10 @@ static void cancel(void) {
     sToken[0] = 0;
 }
 void ai_npc_reset(void) {
+    char path[512];
     cancel();
+    path_for(path, sizeof(path), ".sm64-npc-speaking"); remove(path);
+    sSpeechMusicVolume = 1.0f;
     clear_native_dialogue();
     sOffer = NULL;
     memset(sNpcs, 0, sizeof(sNpcs));
@@ -409,6 +430,7 @@ static void poll_reply(void) {
     if (endConversation || action != NPC_NONE) cancel();
 }
 void ai_npc_update(void) {
+    update_speech_music();
     if (sNativeDialog >= 0 && (get_dialog_id() == DIALOG_NONE || sOpen)) clear_native_dialogue();
     if (sOpen && (!live(sChat) || !ready() || distance(sChat->obj) > CHAT_RANGE + 100)) {
         if (sChat) sChat->pending = 0;
@@ -789,6 +811,7 @@ void ai_npc_native_page(UNUSED s32 dialog, UNUSED s32 start, UNUSED s32 lines,
 s32 ai_npc_native_advance(UNUSED s32 dialog, UNUSED s32 start, UNUSED s32 choice) { return FALSE; }
 void ai_npc_reset(void) {}
 void ai_npc_update(void) {}
+f32 ai_npc_music_volume(void) { return 1.0f; }
 void ai_npc_render(void) {}
 void ai_npc_scroll(UNUSED s32 direction) {}
 void ai_npc_pointer_down(UNUSED s32 x, UNUSED s32 y, UNUSED s32 w, UNUSED s32 h) {}

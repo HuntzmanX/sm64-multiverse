@@ -4,6 +4,9 @@
 #include "load.h"
 #include "data.h"
 #include "seqplayer.h"
+#ifndef TARGET_N64
+#include "game/ai_npc.h"
+#endif
 
 #ifdef VERSION_JP
 #define US_FLOAT2(x) x##.0
@@ -18,6 +21,9 @@ void sequence_channel_process_sound(struct SequenceChannel *seqChannel, s32 reca
 
     if (seqChannel->changes.as_bitfields.volume || recalculateVolume) {
         channelVolume = seqChannel->volume * seqChannel->volumeScale * seqChannel->seqPlayer->appliedFadeVolume;
+#ifndef TARGET_N64
+        if (seqChannel->seqPlayer == &gSequencePlayers[0]) channelVolume *= ai_npc_music_volume();
+#endif
         if (seqChannel->seqPlayer->muted && (seqChannel->muteBehavior & MUTE_BEHAVIOR_SOFTEN) != 0) {
             channelVolume = seqChannel->seqPlayer->muteVolumeScale * channelVolume;
         }
@@ -63,6 +69,9 @@ static void sequence_channel_process_sound(struct SequenceChannel *seqChannel) {
     s32 i;
 
     channelVolume = seqChannel->volume * seqChannel->volumeScale * seqChannel->seqPlayer->fadeVolume;
+#ifndef TARGET_N64
+    if (seqChannel->seqPlayer == &gSequencePlayers[0]) channelVolume *= ai_npc_music_volume();
+#endif
     if (seqChannel->seqPlayer->muted && (seqChannel->muteBehavior & MUTE_BEHAVIOR_SOFTEN) != 0) {
         channelVolume *= seqChannel->seqPlayer->muteVolumeScale;
     }
@@ -83,6 +92,10 @@ static void sequence_channel_process_sound(struct SequenceChannel *seqChannel) {
 
 void sequence_player_process_sound(struct SequencePlayer *seqPlayer) {
     s32 i;
+#if !defined(TARGET_N64) && (defined(VERSION_EU) || defined(VERSION_SH))
+    /* Speech gain is independent of the sequence's own volume/fade state. */
+    if (seqPlayer == &gSequencePlayers[0]) seqPlayer->recalculateVolume = TRUE;
+#endif
 
     if (seqPlayer->fadeRemainingFrames != 0) {
         seqPlayer->fadeVolume += seqPlayer->fadeVelocity;

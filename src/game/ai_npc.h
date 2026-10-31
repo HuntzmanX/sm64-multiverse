@@ -10,6 +10,7 @@ void ai_npc_reset(void);
 void ai_npc_native_page(s32 dialog, s32 start, s32 lines, const u8 *encoded, s32 visible);
 s32 ai_npc_native_advance(s32 dialog, s32 start, s32 choice);
 void ai_npc_update(void);
+f32 ai_npc_music_volume(void);
 void ai_npc_render(void);
 void ai_npc_frame_camera(f32 pos[3], f32 focus[3], f32 fov);
 void ai_npc_scroll(s32 direction);

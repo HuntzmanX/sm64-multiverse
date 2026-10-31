@@ -3,6 +3,7 @@ import json
 import os
 import unittest
 import threading
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -165,6 +166,52 @@ class SpeechTests(unittest.TestCase):
             release.set()
             one.result(2); two.result(2)
         self.assertEqual(counts, [0, 1])
+
+    def test_music_duck_signal_covers_playback_and_is_cleaned_on_all_exits(self):
+        for result in ("finished", "cancelled", "failed-before-start", "failed-after-start"):
+            with self.subTest(result=result), tempfile.TemporaryDirectory() as directory:
+                runtime = Path(directory)
+                marker = runtime / ".sm64-npc-speaking"
+                def play(audio, active, volume, on_start):
+                    self.assertFalse(marker.exists())
+                    if result == "failed-before-start":
+                        raise RuntimeError("device failed")
+                    on_start()
+                    self.assertTrue(marker.exists())
+                    self.assertTrue(active())
+                    original = marker.stat().st_ino
+                    with patch("speech.time.monotonic", return_value=10**12), patch("speech.os.utime", wraps=os.utime) as refresh:
+                        active()
+                        refresh.assert_called_once()
+                    self.assertEqual(marker.stat().st_ino, original)
+                    if result == "failed-after-start":
+                        raise RuntimeError("device failed")
+                    return result == "finished"
+                with patch("speech._play_audio_unlocked", side_effect=play):
+                    if result.startswith("failed"):
+                        with self.assertRaises(RuntimeError):
+                            play_audio(b"audio", lambda: True, 0.8, runtime=runtime)
+                    else:
+                        self.assertEqual(play_audio(b"audio", lambda: True, 0.8, runtime=runtime), result == "finished")
+                self.assertFalse(marker.exists())
+
+    def test_music_signal_failure_does_not_interrupt_voice_and_no_voice_does_not_duck(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = Path(directory)
+            marker = runtime / ".sm64-npc-speaking"
+            def play(audio, active, volume, on_start):
+                on_start()
+                return True
+            reveal = Mock()
+            with patch("speech.atomic_write", side_effect=PermissionError), \
+                 patch("speech._play_audio_unlocked", side_effect=play):
+                self.assertTrue(play_audio(b"audio", lambda: True, 0.8, reveal, runtime=runtime))
+            reveal.assert_called_once()
+            with patch("speech._play_audio_unlocked") as player:
+                deliver_voice(None, self.config, lambda: True, Mock(), runtime=runtime)
+                self.assertFalse(play_audio(b"audio", lambda: False, 0.8, runtime=runtime))
+                player.assert_not_called()
+            self.assertFalse(marker.exists())
 
     def test_windows_audio_start_callback_and_device_cleanup(self):
         commands = []

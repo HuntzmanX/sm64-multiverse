@@ -159,7 +159,7 @@ class NativeVoiceService:
             # Only playback follows the live page, so it never talks over a different page.
             audio = self.cache.load_or_generate(request, self.config, lambda: not self._closed.is_set(), self.log)
             if audio is not None and current():
-                completed = play_audio(audio, current, self.config.volume)
+                completed = play_audio(audio, current, self.config.volume, runtime=path.parent)
                 if completed and current():
                     # A page/session-specific receipt; the game decides whether
                     # to scroll, close, or wait at a choice prompt.

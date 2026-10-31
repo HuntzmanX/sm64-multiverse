@@ -210,7 +210,7 @@ class NativeCacheTests(unittest.TestCase):
         cached.write_bytes(b"ID3cached-recording")
         with ThreadPoolExecutor(max_workers=1) as pool:
             service = NativeVoiceService(self.root, self.config, pool, self.log)
-            def play(audio, active, volume):
+            def play(audio, active, volume, **kwargs):
                 self.assertEqual(audio, b"ID3cached-recording")
                 for _ in range(20):
                     with patch("native_dialogue.read_native_request", side_effect=[FileNotFoundError, self.request]), \
@@ -230,7 +230,7 @@ class NativeCacheTests(unittest.TestCase):
         path.write_text(json.dumps(self.request))
         with ThreadPoolExecutor(max_workers=1) as pool:
             service = NativeVoiceService(self.root, self.config, pool, self.log)
-            def play(audio, active, volume):
+            def play(audio, active, volume, **kwargs):
                 self.assertTrue(active())
                 (self.root / ".sm64-npc-request.json").write_text("{}")
                 self.assertFalse(active())
@@ -252,7 +252,7 @@ class NativeCacheTests(unittest.TestCase):
                     for page in pages:
                         done.unlink(missing_ok=True)
                         path.write_text(json.dumps(page))
-                        def play(audio, active, volume):
+                        def play(audio, active, volume, **kwargs):
                             self.assertTrue(active())
                             self.assertFalse(done.exists())
                             return True
@@ -274,7 +274,7 @@ class NativeCacheTests(unittest.TestCase):
                 (self.root / ".sm64-npc-request.json").unlink(missing_ok=True)
                 config = replace(self.config, bobomb_voice="") if scenario == "muted" else self.config
                 service = NativeVoiceService(self.root, config, pool, self.log)
-                def play(audio, active, volume):
+                def play(audio, active, volume, **kwargs):
                     if scenario == "skipped":
                         path.unlink()
                     elif scenario == "new-page":

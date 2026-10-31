@@ -43,7 +43,7 @@ class TurnTests(unittest.TestCase):
             if kind == "mario":
                 self.assertTrue(started.wait(2))
             return kind.encode()
-        def play(audio, active, volume, on_start):
+        def play(audio, active, volume, on_start, **kwargs):
             events.append(f"play-{audio.decode()}")
             self.assertFalse((self.root / ".sm64-npc-response").exists())
             on_start()
@@ -66,7 +66,7 @@ class TurnTests(unittest.TestCase):
 
     def test_cancel_during_mario_drops_npc_and_action(self):
         turn = self.turn(SpeechConfig("test"))
-        def play(audio, active, volume, on_start):
+        def play(audio, active, volume, on_start, **kwargs):
             on_start()
             self.path.unlink()
         with patch("turns.prepare_voice", return_value=b"audio"), patch("speech.play_audio", side_effect=play):
@@ -84,7 +84,7 @@ class TurnTests(unittest.TestCase):
                 self.reply.coins = 2 if action == "give_coins" else 0
                 self.reply.end_conversation = end
                 turn = self.turn(SpeechConfig("test"))
-                def play(audio, active, volume, on_start):
+                def play(audio, active, volume, on_start, **kwargs):
                     on_start()
                     self.assertFalse(response.exists())
                     self.assertTrue(self.path.exists())
@@ -96,7 +96,7 @@ class TurnTests(unittest.TestCase):
         self.reply.action = "hostile"
         self.reply.end_conversation = True
         turn = self.turn(SpeechConfig("test"))
-        def play(audio, active, volume, on_start):
+        def play(audio, active, volume, on_start, **kwargs):
             on_start()
             if turn.events.emit.call_count == 2:
                 self.path.unlink()

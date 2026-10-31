@@ -84,7 +84,7 @@ class ConversationTurn:
             mario_audio = prepare_voice(self.config, "mario", self.request["player_text"],
                                         "neutral", self.events.active, self.log)
             self.mario_prepared.set()
-            deliver_voice(mario_audio, self.config, self.events.active, self.reveal_player, self.log)
+            deliver_voice(mario_audio, self.config, self.events.active, self.reveal_player, self.log, runtime=self.runtime)
             while self.events.active():
                 try:
                     reply, text, npc_audio = future.result(timeout=0.1)
@@ -103,7 +103,7 @@ class ConversationTurn:
                 nonlocal revealed_at
                 self.events.emit(2, text)
                 revealed_at = time.monotonic()
-            played = deliver_voice(npc_audio, self.config, self.events.active, reveal_npc, self.log)
+            played = deliver_voice(npc_audio, self.config, self.events.active, reveal_npc, self.log, runtime=self.runtime)
             if end_conversation and not played:
                 # With no voice/device, leave the final line readable before closing.
                 deadline = revealed_at + min(8.0, max(1.5, len(text) / 20.0))

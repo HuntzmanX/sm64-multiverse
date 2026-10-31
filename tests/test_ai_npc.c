@@ -356,6 +356,32 @@ static void native_done(const char *token) {
     FILE *file = fopen(".sm64-npc-native-done", "w"); assert(file);
     fprintf(file, "%s\n", token); fclose(file);
 }
+static void check_speech_music_ducking(void) {
+    s32 i;
+    f32 previous;
+    struct utimbuf old;
+    FILE *file;
+    fixture(); assert(ai_npc_music_volume() == 1.0f);
+    file = fopen(".sm64-npc-speaking", "w"); assert(file); fputs("speaking\n", file); fclose(file);
+    previous = ai_npc_music_volume();
+    for (i = 0; i < 6; i++) {
+        ai_npc_update();
+        assert(ai_npc_music_volume() >= 0.5f && ai_npc_music_volume() <= previous);
+        previous = ai_npc_music_volume();
+    }
+    assert(ai_npc_music_volume() == 0.5f);
+    remove(".sm64-npc-speaking");
+    for (i = 0; i < 11; i++) ai_npc_update();
+    assert(ai_npc_music_volume() == 1.0f);
+    file = fopen(".sm64-npc-speaking", "w"); assert(file); fclose(file);
+    for (i = 0; i < 6; i++) ai_npc_update();
+    assert(ai_npc_music_volume() == 0.5f);
+    old.actime = old.modtime = time(NULL) - 10;
+    assert(utime(".sm64-npc-speaking", &old) == 0); /* Killed companion cannot leave music ducked. */
+    for (i = 0; i < 11; i++) ai_npc_update();
+    assert(ai_npc_music_volume() == 1.0f);
+    ai_npc_reset(); assert(access(".sm64-npc-speaking", F_OK) != 0);
+}
 static void check_native_audio_advance(void) {
     u8 encoded[] = { ASCII_TO_DIALOG('H'), DIALOG_CHAR_NEWLINE,
                      ASCII_TO_DIALOG('i'), DIALOG_CHAR_TERMINATOR };
@@ -460,6 +486,7 @@ int main(void) {
     check_original_dialogue_voice();
     check_scripted_announcement_voices();
     check_native_audio_advance();
+    check_speech_music_ducking();
     puts("Game-side NPC tests passed: engine gravity and grounded movement, UI history, scroll, voice reveals, camera framing, input, stale replies, cancellation, single execution, capabilities, timeout, hostility.");
     ai_npc_reset();
     remove(".sm64-npc-response"); remove(".sm64-npc-result.json");

@@ -16,6 +16,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
+from protocol import atomic_write
 
 TOAD_VOICE = "e273b9cb9eaf4c5caefb83f6fefa7ac3"
 MARIO_VOICE = "a564085babeb4d14802ea31b7b6c2869"
@@ -201,16 +202,59 @@ def _play_audio_unlocked(audio: bytes, active: Callable[[], bool], volume: float
                     process.wait(timeout=1)
 
 
+class VoiceActivity:
+    """Short-lived game-side BGM ducking signal, refreshed without replacing it."""
+    def __init__(self, runtime: Path):
+        self.path = runtime / ".sm64-npc-speaking"
+        self.started = False
+        self.last_refresh = 0.0
+
+    def start(self):
+        try:
+            atomic_write(self.path, "speaking\n")
+            self.started = True
+            self.last_refresh = time.monotonic()
+        except OSError:
+            pass  # A music signal failure must not interrupt speech.
+
+    def refresh(self):
+        if self.started and time.monotonic() - self.last_refresh >= 0.25:
+            try:
+                os.utime(self.path, None)
+            except OSError:
+                pass
+            self.last_refresh = time.monotonic()
+
+    def close(self):
+        if self.started:
+            try:
+                self.path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            self.started = False
+
+
 def play_audio(audio: bytes, active: Callable[[], bool], volume: float,
-               on_start: Callable[[], None] = lambda: None) -> bool:
+               on_start: Callable[[], None] = lambda: None, *, runtime: Path | None = None) -> bool:
     """Return true only when playback reached its natural end, not cancellation/timeout."""
     # Native dialogue and AI conversations share the Windows MCI device/alias.
     while active():
         if PLAYBACK_LOCK.acquire(timeout=0.05):
+            activity = VoiceActivity(runtime) if runtime is not None else None
+            def started():
+                if activity:
+                    activity.start()
+                on_start()
+            def playing():
+                if activity:
+                    activity.refresh()
+                return active()
             try:
                 if active():
-                    return _play_audio_unlocked(audio, active, volume, on_start)
+                    return _play_audio_unlocked(audio, playing, volume, started)
             finally:
+                if activity:
+                    activity.close()
                 PLAYBACK_LOCK.release()
             return False
     return False
@@ -230,7 +274,7 @@ def prepare_voice(config: SpeechConfig | None, kind: str, text: str, emotion: st
 
 
 def deliver_voice(audio: bytes | None, config: SpeechConfig | None, active: Callable[[], bool],
-                  on_start: Callable[[], None], log=print) -> bool:
+                  on_start: Callable[[], None], log=print, *, runtime: Path | None = None) -> bool:
     """Reveal once; return whether audio played successfully (otherwise text fallback)."""
     revealed = False
     played = False
@@ -245,7 +289,10 @@ def deliver_voice(audio: bytes | None, config: SpeechConfig | None, active: Call
         return False
     try:
         if audio is not None and config:
-            play_audio(audio, active, config.volume, reveal_once)
+            if runtime is None:
+                play_audio(audio, active, config.volume, reveal_once)
+            else:
+                play_audio(audio, active, config.volume, reveal_once, runtime=runtime)
             played = revealed
     except Exception as exc:
         if active():
