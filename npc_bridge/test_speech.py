@@ -24,6 +24,8 @@ class SpeechTests(unittest.TestCase):
             self.assertEqual(config.voice_for("toad"), "e273b9cb9eaf4c5caefb83f6fefa7ac3")
             self.assertEqual(config.voice_for("mario"), "a564085babeb4d14802ea31b7b6c2869")
             self.assertEqual(config.voice_for("bobomb_buddy"), "c4adfd6bd1fe4e59ae18ce19dbce2c14")
+            self.assertEqual(config.voice_for("lakitu"), "8bc0ef3b96424e6db3cccf6360c69778")
+            self.assertEqual(config.voice_for("bowser"), "4dab911a84414c41ae0438befe7f2e3c")
             self.assertNotIn("test-key", repr(config))
 
     def test_overrides_and_independent_voice_disable(self):
@@ -32,6 +34,14 @@ class SpeechTests(unittest.TestCase):
             config = SpeechConfig.from_environment()
             self.assertEqual(config.voice_for("mario"), "")
             self.assertEqual(config.voice_for("toad"), "alternate")
+
+    def test_announcement_voice_overrides_and_disable_are_independent(self):
+        with patch.dict(os.environ, {"FISH_AUDIO_API_KEY": "test-key", "FISH_AUDIO_LAKITU_VOICE": " alternate ",
+                                   "FISH_AUDIO_BOWSER_VOICE": ""}, clear=True):
+            config = SpeechConfig.from_environment()
+            self.assertEqual(config.voice_for("lakitu"), "alternate")
+            self.assertEqual(config.voice_for("bowser"), "")
+            self.assertEqual(config.voice_for("toad"), TOAD_VOICE)
 
     def test_config_rejects_model_typos_and_bad_volume(self):
         for change in [{"FISH_AUDIO_MODEL": "typo"}, {"SM64_NPC_VOICE_VOLUME": "2"}]:

@@ -20,6 +20,8 @@ from typing import Callable
 TOAD_VOICE = "e273b9cb9eaf4c5caefb83f6fefa7ac3"
 MARIO_VOICE = "a564085babeb4d14802ea31b7b6c2869"
 BOBOMB_VOICE = "c4adfd6bd1fe4e59ae18ce19dbce2c14"
+LAKITU_VOICE = "8bc0ef3b96424e6db3cccf6360c69778"
+BOWSER_VOICE = "4dab911a84414c41ae0438befe7f2e3c"
 PLAYBACK_LOCK = threading.Lock()
 EMOTIONS = {"neutral", "excited", "happy", "sad", "angry", "whispering"}
 MODELS = {"s1", "s2-pro", "s2.1-pro", "s2.1-pro-free", "drama-3"}
@@ -34,6 +36,8 @@ class SpeechConfig:
     bobomb_voice: str = BOBOMB_VOICE
     volume: float = 0.8
     mario_voice: str = MARIO_VOICE
+    lakitu_voice: str = LAKITU_VOICE
+    bowser_voice: str = BOWSER_VOICE
 
     @classmethod
     def from_environment(cls) -> SpeechConfig | None:
@@ -49,11 +53,14 @@ class SpeechConfig:
             raise ValueError("SM64_NPC_VOICE_VOLUME must be between 0 and 1")
         return cls(key, model, os.environ.get("FISH_AUDIO_TOAD_VOICE", TOAD_VOICE).strip(),
                    os.environ.get("FISH_AUDIO_BOBOMB_VOICE", BOBOMB_VOICE).strip(), volume,
-                   os.environ.get("FISH_AUDIO_MARIO_VOICE", MARIO_VOICE).strip())
+                   os.environ.get("FISH_AUDIO_MARIO_VOICE", MARIO_VOICE).strip(),
+                   os.environ.get("FISH_AUDIO_LAKITU_VOICE", LAKITU_VOICE).strip(),
+                   os.environ.get("FISH_AUDIO_BOWSER_VOICE", BOWSER_VOICE).strip())
 
     def voice_for(self, kind: str) -> str:
         return {"toad": self.toad_voice, "mario": self.mario_voice,
-                "bobomb_buddy": self.bobomb_voice}.get(kind, "")
+                "bobomb_buddy": self.bobomb_voice, "lakitu": self.lakitu_voice,
+                "bowser": self.bowser_voice}.get(kind, "")
 
 
 def validate_spoken_reply(text: str, script: str, max_characters: int = 200) -> str:

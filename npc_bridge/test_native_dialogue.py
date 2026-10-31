@@ -59,6 +59,36 @@ class NativeCacheTests(unittest.TestCase):
             self.cache.load_or_generate(self.request | dict(source="ai"), self.config, lambda: True)
         self.assertFalse(self.cache.root.exists())
 
+    def test_announcements_use_their_voices_directions_and_persistent_cache(self):
+        for kind, dialog, voice, cue in (
+            ("lakitu", 34, "8bc0ef3b96424e6db3cccf6360c69778", "reporter"),
+            ("bowser", 21, "4dab911a84414c41ae0438befe7f2e3c", "menacing"),
+        ):
+            with self.subTest(kind=kind):
+                request = self.request | dict(kind=kind, dialog_id=dialog)
+                path = self.root / ".sm64-npc-native.json"
+                path.write_text(json.dumps(request))
+                self.assertEqual(read_native_request(path), request)
+                with patch("native_dialogue.synthesize", return_value=b"ID3announcement") as synth:
+                    self.assertEqual(self.cache.load_or_generate(request, self.config, lambda: True, self.log), b"ID3announcement")
+                    self.assertEqual(synth.call_args.args[1], voice)
+                    self.assertIn(cue, synth.call_args.kwargs["script"])
+                    DefaultDialogueCache(self.cache.root).load_or_generate(request, self.config, lambda: True, self.log)
+                    synth.assert_called_once()
+                cached, _ = self.cache.identity(request, self.config)
+                changed = replace(self.config, **{f"{kind}_voice": "different-voice"})
+                self.assertNotEqual(cached, self.cache.identity(request, changed)[0])
+                with self.assertRaises(ValueError):
+                    self.cache.identity(request | dict(source="ai"), self.config)
+
+    def test_muted_announcement_does_not_request_or_cache_audio(self):
+        for kind in ("lakitu", "bowser"):
+            with self.subTest(kind=kind), patch("native_dialogue.synthesize") as synth:
+                config = replace(self.config, **{f"{kind}_voice": ""})
+                self.assertIsNone(self.cache.load_or_generate(self.request | dict(kind=kind), config, lambda: True))
+                synth.assert_not_called()
+        self.assertFalse(self.cache.root.exists())
+
     def test_failure_and_cancelled_download_never_save_a_file(self):
         for result in (None, b"", b"{error}"):
             with patch("native_dialogue.synthesize", return_value=result):

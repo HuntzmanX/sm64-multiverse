@@ -297,6 +297,49 @@ static void check_original_dialogue_voice(void) {
     key(1); ai_npc_native_page(4, 0, 1, encoded, TRUE);
     ai_npc_reset(); assert(access(".sm64-npc-native.json", F_OK) != 0);
 }
+static void check_scripted_announcement_voices(void) {
+    s32 lakitu[] = { DIALOG_030, DIALOG_033, DIALOG_034 };
+    s32 bowser[] = { DIALOG_021, DIALOG_029, DIALOG_067, DIALOG_090, DIALOG_092,
+                     DIALOG_093, DIALOG_119, DIALOG_120, DIALOG_121, DIALOG_163 };
+    u8 encoded[] = { ASCII_TO_DIALOG('H'), ASCII_TO_DIALOG('i'), DIALOG_CHAR_TERMINATOR };
+    char packet[2048];
+    s32 i, group, dialog;
+    u32 counter;
+    FILE *file;
+    fixture(); ai_npc_reset(); /* No chat NPC is registered or being interacted with. */
+    mario.interactObj = mario.usedObj = NULL;
+    for (group = 0; group < 2; group++) for (i = 0; i < (group ? 10 : 3); i++) {
+        dialog = group ? bowser[i] : lakitu[i];
+        ai_npc_native_page(dialog, 0, 1, encoded, TRUE);
+        file = fopen(".sm64-npc-native.json", "r"); assert(file);
+        packet[fread(packet, 1, sizeof(packet)-1, file)] = 0; fclose(file);
+        assert(strstr(packet, group ? "\"kind\":\"bowser\"" : "\"kind\":\"lakitu\""));
+        assert(strstr(packet, "\"text\":\"Hi\"") && strstr(packet, "\"source\":\"default\""));
+        counter = sRequest;
+        ai_npc_native_page(dialog, 0, 1, encoded, TRUE);
+        assert(sRequest == counter); /* Same-page renders and heartbeats never repeat speech. */
+        gGlobalTimer += 30;
+        ai_npc_native_page(dialog, 0, 1, encoded, TRUE);
+        assert(sRequest == counter);
+        key(20); assert(!sOpen && !sChat && !sOffer); /* Announcements have no reply mode. */
+        controller.buttonDown = A_BUTTON; ai_npc_filter_controller();
+        assert(controller.buttonDown == A_BUTTON);
+        ai_npc_native_page(dialog, 0, 1, encoded, FALSE);
+        assert(access(".sm64-npc-native.json", F_OK) != 0);
+    }
+    /* A stale Buddy interaction cannot steal an offscreen Bowser announcement. */
+    fixture(); mario.interactObj = &npc;
+    ai_npc_native_page(DIALOG_021, 0, 1, encoded, TRUE);
+    file = fopen(".sm64-npc-native.json", "r"); assert(file);
+    packet[fread(packet, 1, sizeof(packet)-1, file)] = 0; fclose(file);
+    assert(strstr(packet, "\"kind\":\"bowser\"") && !sOpen && !sOffer);
+    mario.interactObj = mario.usedObj = NULL;
+    ai_npc_native_page(DIALOG_020, 0, 1, encoded, TRUE); /* Peach's letter stays unassigned. */
+    assert(access(".sm64-npc-native.json", F_OK) != 0);
+    ai_npc_native_page(DIALOG_035, 0, 1, encoded, TRUE); /* Generic camera sign isn't Lakitu speaking. */
+    assert(access(".sm64-npc-native.json", F_OK) != 0);
+    ai_npc_reset();
+}
 int main(void) {
     char temp[] = "/tmp/sm64-npc-test-XXXXXX", token[80];
     assert(mkdtemp(temp)); assert(chdir(temp) == 0);
@@ -352,6 +395,7 @@ int main(void) {
     check_grounded_movement();
     check_npc_conversation_end();
     check_original_dialogue_voice();
+    check_scripted_announcement_voices();
     puts("Game-side NPC tests passed: engine gravity and grounded movement, UI history, scroll, voice reveals, camera framing, input, stale replies, cancellation, single execution, capabilities, timeout, hostility.");
     ai_npc_reset();
     remove(".sm64-npc-response"); remove(".sm64-npc-result.json");

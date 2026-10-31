@@ -13,10 +13,17 @@ from pathlib import Path
 from protocol import TOKEN, ascii_text, read_json
 from speech import MAX_AUDIO_BYTES, SpeechConfig, play_audio, synthesize
 
+DIRECTIONS = {
+    "toad": "friendly, animated, a little nervous",
+    "bobomb_buddy": "boisterous, cheerful and confident",
+    "lakitu": "upbeat, clear, enthusiastic live television reporter",
+    "bowser": "menacing, theatrical, boastful and growling",
+}
+
 
 def read_native_request(path: Path) -> dict:
     request = read_json(path)
-    if request.get("source") != "default" or request.get("kind") not in {"toad", "bobomb_buddy"}:
+    if request.get("source") != "default" or request.get("kind") not in DIRECTIONS:
         raise ValueError("Only original NPC pages may enter the voice cache")
     if not isinstance(request.get("id"), str) or not TOKEN.fullmatch(request["id"]):
         raise ValueError("Invalid original dialogue request ID")
@@ -43,10 +50,10 @@ class DefaultDialogueCache:
 
     @staticmethod
     def direction(kind: str) -> str:
-        return "friendly, animated, a little nervous" if kind == "toad" else "boisterous, cheerful and confident"
+        return DIRECTIONS[kind]
 
     def identity(self, request: dict, config: SpeechConfig) -> tuple[Path, str]:
-        if request.get("source") != "default" or request.get("kind") not in {"toad", "bobomb_buddy"}:
+        if request.get("source") != "default" or request.get("kind") not in DIRECTIONS:
             raise ValueError("Only original supported NPC dialogue may be cached")
         text = ascii_text(request["text"], 1024)
         script = f"[{self.direction(request['kind'])}] {text}"

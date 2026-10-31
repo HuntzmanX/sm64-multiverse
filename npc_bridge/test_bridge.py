@@ -31,7 +31,7 @@ class ProtocolTests(unittest.TestCase):
     def test_reject_bad_requests(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "request.json"
-            for changes in [dict(id="123\n4"), dict(npc="../../toad"), dict(kind="bowser"),
+            for changes in [dict(id="123\n4"), dict(npc="../../toad"), dict(kind="bowser"), dict(kind="lakitu"),
                             dict(stars=True), dict(coin_budget=11), dict(player_text=" "),
                             dict(player_text="x"*121), dict(can_open_cannon=1)]:
                 path.write_text(json.dumps(request(**changes)))

@@ -132,6 +132,8 @@ static void clear_native_dialogue(void) {
 void ai_npc_native_page(s32 dialog, s32 start, s32 lines, const u8 *encoded, s32 visible) {
 #if defined(VERSION_US)
     struct Npc *npc = NULL;
+    struct Object *speaker = NULL;
+    const char *kind = NULL;
     char text[1024], part[48], token[80], path[512], temp[520];
     s32 i, j = 0, line = 0, c, samePage;
     FILE *file;
@@ -140,12 +142,23 @@ void ai_npc_native_page(s32 dialog, s32 start, s32 lines, const u8 *encoded, s32
         if (sNativeDialog >= 0) clear_native_dialogue();
         return;
     }
-    for (i = 0; i < NPC_COUNT; i++) {
+    /* These scripted messages have fixed speakers even without an interactObj:
+     * Lakitu's intro/report, Bowser's offscreen taunts, and all boss speeches. */
+    switch (dialog) {
+        case DIALOG_030: case DIALOG_033: case DIALOG_034:
+            kind = "lakitu"; break;
+        case DIALOG_021: case DIALOG_029: case DIALOG_067: case DIALOG_090:
+        case DIALOG_092: case DIALOG_093: case DIALOG_119: case DIALOG_120:
+        case DIALOG_121: case DIALOG_163:
+            kind = "bowser"; break;
+    }
+    for (i = 0; !kind && i < NPC_COUNT; i++) {
         if (sNpcs[i].obj && (sNpcs[i].obj == gMarioState->interactObj
             || sNpcs[i].obj == gMarioState->usedObj)
             && (sNpcs[i].obj->activeFlags & ACTIVE_FLAG_ACTIVE)) { npc = &sNpcs[i]; break; }
     }
-    if (!npc) { if (sNativeDialog >= 0) clear_native_dialogue(); return; }
+    if (npc) { speaker = npc->obj; kind = npc->kind == 1 ? "toad" : "bobomb_buddy"; }
+    if (!kind) { if (sNativeDialog >= 0) clear_native_dialogue(); return; }
     for (i = start; i < start + 2048 && j < (s32)sizeof(text)-1; i++) {
         c = encoded[i]; part[0] = 0;
         if (c == DIALOG_CHAR_TERMINATOR) break;
@@ -188,7 +201,7 @@ void ai_npc_native_page(s32 dialog, s32 start, s32 lines, const u8 *encoded, s32
         memcpy(text + j, part, strlen(part)); j += strlen(part);
     }
     text[j] = 0;
-    samePage = sNativeObject == npc->obj && sNativeDialog == dialog && sNativePage == start
+    samePage = sNativeObject == speaker && sNativeDialog == dialog && sNativePage == start
         && !strcmp(sNativeText, text);
     if (!j || (samePage && gGlobalTimer - sNativeFrame < 30)) return;
     if (samePage) strcpy(token, sNativeToken); /* Refresh liveness without a new playback request. */
@@ -200,11 +213,11 @@ void ai_npc_native_page(s32 dialog, s32 start, s32 lines, const u8 *encoded, s32
     snprintf(temp, sizeof(temp), "%s.tmp", path);
     file = fopen(temp, "w"); if (!file) return;
     fprintf(file, "{\"id\":\"%s\",\"source\":\"default\",\"language\":\"us\",\"kind\":\"%s\",\"dialog_id\":%d,\"page\":%d,\"text\":",
-            token, npc->kind == 1 ? "toad" : "bobomb_buddy", dialog, start);
+            token, kind, dialog, start);
     json_string(file, text); fputs("}\n", file);
     if (fclose(file) != 0) return;
     remove(path); if (rename(temp, path) != 0) return;
-    sNativeObject = npc->obj; sNativeDialog = dialog; sNativePage = start;
+    sNativeObject = speaker; sNativeDialog = dialog; sNativePage = start;
     strcpy(sNativeText, text); strcpy(sNativeToken, token); sNativeFrame = gGlobalTimer;
 #else
     (void)dialog; (void)start; (void)lines; (void)encoded; (void)visible;

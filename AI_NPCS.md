@@ -68,6 +68,8 @@ answer. The defaults are:
 | Mario | `a564085babeb4d14802ea31b7b6c2869` |
 | Toad (updated manic voice) | `e273b9cb9eaf4c5caefb83f6fefa7ac3` |
 | Bob-omb Buddy (Gilbert Gottfried) | `c4adfd6bd1fe4e59ae18ce19dbce2c14` |
+| Lakitu | `8bc0ef3b96424e6db3cccf6360c69778` |
+| Bowser | `4dab911a84414c41ae0438befe7f2e3c` |
 
 The default Fish model is now **`drama-3`**, using your Fish API credit. Set a
 Fish key in the companion's terminal alongside your existing OpenAI key:
@@ -93,8 +95,8 @@ Each submitted turn works as follows:
    prefetched during Mario's playback; the two TTS downloads do not overlap.
 3. Once Mario finishes and the NPC audio is ready, the NPC's message appears at
    playback start. The two voices never talk over each other.
-4. After the NPC finishes, you can send the next message or close the panel to
-   let an accepted action run.
+4. After the NPC finishes, ordinary chat continues. A final goodbye closes the
+   panel, and an accepted action closes the panel and starts automatically.
 
 The Windows audio-start callback publishes each reveal event; the game shows it
 on its next frame and acknowledges it. This is frame-level synchronization,
@@ -139,6 +141,8 @@ no requests while idle. Keys remain in the environment and are never saved.
 | `FISH_AUDIO_MARIO_VOICE` | Mario ID above; set empty to disable reading player messages |
 | `FISH_AUDIO_TOAD_VOICE` | New Toad ID above; empty disables Toad speech |
 | `FISH_AUDIO_BOBOMB_VOICE` | Gilbert ID above; empty disables Buddy speech |
+| `FISH_AUDIO_LAKITU_VOICE` | Lakitu ID above; empty disables Lakitu announcements |
+| `FISH_AUDIO_BOWSER_VOICE` | Bowser ID above; empty disables Bowser announcements |
 | `FISH_AUDIO_MODEL` | `drama-3`; can explicitly switch back to `s2.1-pro-free` |
 | `SM64_NPC_VOICE_VOLUME` | `0.8`; range `0`–`1` |
 
@@ -153,10 +157,19 @@ API reference: https://docs.fish.audio/api-reference/endpoint/openapi-v1/text-to
 
 ## Cached original NPC dialogue
 
-Original US-English **Toad and pink Bob-omb Buddy dialogue pages** are now voiced
-in their assigned voices. The game exports the actual page being displayed,
+Original US-English **Toad, pink Bob-omb Buddy, Lakitu and Bowser dialogue pages**
+are voiced in their assigned voices. The game exports the actual page being displayed,
 including expanded button names and variable numbers; the companion does not
 ask OpenAI to rewrite these lines.
+
+Lakitu uses a lively reporter delivery for the intro/controller greeting and his
+two live reports (dialogue IDs 030, 033, 034). Bowser uses a menacing theatrical
+delivery for his castle/door/trap announcements, all three battle introductions,
+and defeat speeches, including the 120-star variant (021, 029, 067, 090, 092,
+093, 119, 120, 121, 163). These speakers are identified even in offscreen scenes.
+**Lakitu and Bowser messages are announcements only:** they do not open a reply
+panel or enable AI conversation/actions. Other signs and speakers keep their
+normal behavior.
 
 - **First encounter:** generate any missing page recording and save it under
   `npc_audio_cache/` in the repository root. There may be a short generation wait.
