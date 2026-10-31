@@ -2,6 +2,7 @@
  * Collision queries use a flat test floor; rendering uses stubs. */
 #include <assert.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include "../src/game/ai_npc.c"
 
 static struct MarioState mario;
@@ -268,6 +269,7 @@ static void check_original_dialogue_voice(void) {
     FILE *file;
     u32 counter;
     struct Object other;
+    struct stat original, heartbeat;
     fixture(); mario.interactObj = &npc;
     ai_npc_native_page(4, 0, 1, encoded, TRUE);
     file = fopen(".sm64-npc-native.json", "r"); assert(file);
@@ -275,11 +277,21 @@ static void check_original_dialogue_voice(void) {
     assert(strstr(packet, "\"source\":\"default\"") && strstr(packet, "\"kind\":\"bobomb_buddy\""));
     assert(strstr(packet, "\"text\":\"Hi A button!\""));
     strcpy(before, packet); counter = sRequest;
+    assert(stat(".sm64-npc-native.json", &original) == 0);
     ai_npc_native_page(4, 0, 1, encoded, TRUE);
     assert(sRequest == counter); /* Repeated render frames do not request more audio. */
     gGlobalTimer += 30; tick();
     ai_npc_native_page(4, 0, 1, encoded, TRUE);
     assert(sRequest == counter); /* Heartbeats retain the page request ID. */
+    assert(stat(".sm64-npc-native.json", &heartbeat) == 0);
+    assert(original.st_ino == heartbeat.st_ino && original.st_dev == heartbeat.st_dev);
+    file = fopen(".sm64-npc-native.json", "r"); assert(file);
+    packet[fread(packet, 1, sizeof(packet)-1, file)] = 0; fclose(file);
+    assert(!strcmp(before, packet)); /* Refresh in place, never unlink/recreate during audio. */
+    remove(".sm64-npc-native.json"); /* Recover the same token if the heartbeat file was lost. */
+    gGlobalTimer += 30; tick();
+    ai_npc_native_page(4, 0, 1, encoded, TRUE);
+    assert(sRequest == counter && access(".sm64-npc-native.json", F_OK) == 0);
     ai_npc_native_page(4, 6, 2, encoded, TRUE);
     file = fopen(".sm64-npc-native.json", "r"); assert(file);
     packet[fread(packet, 1, sizeof(packet)-1, file)] = 0; fclose(file);

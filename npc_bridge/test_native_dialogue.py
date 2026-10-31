@@ -165,6 +165,66 @@ class NativeCacheTests(unittest.TestCase):
                 synth.assert_not_called()
             service.close()
 
+    def test_transient_page_read_failures_do_not_cancel_playback(self):
+        path = self.root / ".sm64-npc-native.json"
+        path.write_text(json.dumps(self.request))
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            service = NativeVoiceService(self.root, self.config, pool, self.log)
+            for error in (FileNotFoundError, PermissionError, ValueError):
+                with self.subTest(error=error), \
+                     patch("native_dialogue.read_native_request", side_effect=[error("refresh"), self.request]) as read, \
+                     patch("native_dialogue.time.sleep") as sleep:
+                    self.assertTrue(service.current(path, self.request["id"]))
+                    self.assertEqual(read.call_count, 2)
+                    sleep.assert_called_once_with(0.01)
+            service.close()
+
+    def test_persistent_loss_and_real_page_changes_still_cancel(self):
+        path = self.root / ".sm64-npc-native.json"
+        path.write_text(json.dumps(self.request))
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            service = NativeVoiceService(self.root, self.config, pool, self.log)
+            with patch("native_dialogue.read_native_request", side_effect=PermissionError) as read, \
+                 patch("native_dialogue.time.sleep") as sleep:
+                self.assertFalse(service.current(path, self.request["id"]))
+                self.assertEqual(read.call_count, 3)
+                self.assertEqual(sleep.call_count, 2)
+            with patch("native_dialogue.read_native_request", return_value=self.request | dict(id="1-2-4")) as read, \
+                 patch("native_dialogue.time.sleep") as sleep:
+                self.assertFalse(service.current(path, self.request["id"]))
+                read.assert_called_once()
+                sleep.assert_not_called()
+            def open_chat(seconds):
+                (self.root / ".sm64-npc-request.json").write_text("{}")
+            with patch("native_dialogue.read_native_request", side_effect=PermissionError) as read, \
+                 patch("native_dialogue.time.sleep", side_effect=open_chat):
+                self.assertFalse(service.current(path, self.request["id"]))
+                read.assert_called_once()  # Cancellation during retry is immediate.
+            service.close()
+
+    def test_cached_clip_survives_repeated_refresh_read_gaps_and_finishes(self):
+        path = self.root / ".sm64-npc-native.json"
+        path.write_text(json.dumps(self.request))
+        cached, _ = self.cache.identity(self.request, self.config)
+        cached.parent.mkdir()
+        cached.write_bytes(b"ID3cached-recording")
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            service = NativeVoiceService(self.root, self.config, pool, self.log)
+            def play(audio, active, volume):
+                self.assertEqual(audio, b"ID3cached-recording")
+                for _ in range(20):
+                    with patch("native_dialogue.read_native_request", side_effect=[FileNotFoundError, self.request]), \
+                         patch("native_dialogue.time.sleep"):
+                        self.assertTrue(active())
+                return True
+            with patch("native_dialogue.synthesize") as synth, patch("native_dialogue.play_audio", side_effect=play) as player:
+                service.poll(self.root)
+                service._future.result(2)
+                player.assert_called_once()
+                synth.assert_not_called()
+            self.assertEqual((self.root / ".sm64-npc-native-done").read_text(), self.request["id"] + "\n")
+            service.close()
+
     def test_cached_page_plays_and_ai_conversation_stops_it(self):
         path = self.root / ".sm64-npc-native.json"
         path.write_text(json.dumps(self.request))

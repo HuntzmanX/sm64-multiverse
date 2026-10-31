@@ -7,6 +7,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#if defined(_MSC_VER) || defined(__MINGW32__)
+#include <sys/utime.h>
+#else
+#include <utime.h>
+#endif
 #include "area.h"
 #include "behavior_data.h"
 #include "camera.h"
@@ -223,13 +228,16 @@ void ai_npc_native_page(s32 dialog, s32 start, s32 lines, const u8 *encoded, s32
     samePage = sNativeObject == speaker && sNativeDialog == dialog && sNativePage == start
         && !strcmp(sNativeText, text);
     if (!j || (samePage && gGlobalTimer - sNativeFrame < 30)) return;
+    path_for(path, sizeof(path), ".sm64-npc-native.json");
+    /* A heartbeat only needs to refresh liveness. Removing/replacing the live
+     * file creates a gap that the audio worker can mistake for a closed page. */
+    if (samePage && utime(path, NULL) == 0) { sNativeFrame = gGlobalTimer; return; }
     if (samePage) strcpy(token, sNativeToken); /* Refresh liveness without a new playback request. */
     else {
         sNativeFinished = 0;
         if (!sSession) sSession = (u32)time(NULL) ^ (u32)clock();
         snprintf(token, sizeof(token), "%u-%u-%u", sSession, ++sRequest, gGlobalTimer);
     }
-    path_for(path, sizeof(path), ".sm64-npc-native.json");
     snprintf(temp, sizeof(temp), "%s.tmp", path);
     file = fopen(temp, "w"); if (!file) return;
     fprintf(file, "{\"id\":\"%s\",\"source\":\"default\",\"language\":\"us\",\"kind\":\"%s\",\"dialog_id\":%d,\"page\":%d,\"text\":",

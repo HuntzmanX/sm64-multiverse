@@ -182,6 +182,9 @@ normal behavior.
   page encounter, so skipped, cancelled or old audio cannot advance another page.
   If voice is disabled, generation fails or playback fails/times out, pages stay
   under manual control. Uncached next pages may pause while their audio generates.
+- The page heartbeat refreshes the existing file's timestamp without replacing
+  it. Brief read/sharing failures are retried for up to 20ms, preventing a file
+  refresh from cutting audio off while still cancelling actual skips/closures.
 - Advancing a page or leaving the dialogue stops the old page's playback.
   Cannon preparation and "ready for blastoff" are separate pages/recordings.
 - If a page's first download has already started when you skip it, the complete

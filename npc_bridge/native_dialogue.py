@@ -116,12 +116,21 @@ class NativeVoiceService:
         self._last = None
 
     def current(self, path: Path, token: str) -> bool:
-        try:
-            return (not self._closed.is_set() and time.time() - path.stat().st_mtime < 3
-                    and read_native_request(path)["id"] == token
-                    and not (path.parent / ".sm64-npc-request.json").exists())
-        except (OSError, ValueError):
-            return False
+        for attempt in range(3):
+            if self._closed.is_set():
+                return False
+            try:
+                if (path.parent / ".sm64-npc-request.json").exists():
+                    return False
+                return (time.time() - path.stat().st_mtime < 3
+                        and read_native_request(path)["id"] == token)
+            except (OSError, ValueError):
+                # A page replacement or Windows sharing lock can briefly make a
+                # valid file unreadable. Require a verified matching page after
+                # a bounded retry, adding at most 20ms before cancelling a lost page.
+                if attempt < 2:
+                    time.sleep(0.01)
+        return False
 
     def poll(self, runtime: Path) -> None:
         if not self.config or not self.config.volume or self._closed.is_set():
