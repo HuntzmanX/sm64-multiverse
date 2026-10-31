@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from speech import (MAX_AUDIO_BYTES, TOAD_VOICE, MARIO_VOICE, SpeechConfig,
-                    _play_windows, synthesize, tts_request, prepare_voice, deliver_voice, validate_spoken_reply, play_audio)
+                    _play_windows, _play_audio_unlocked, synthesize, tts_request, prepare_voice, deliver_voice, validate_spoken_reply, play_audio)
 
 
 class SpeechTests(unittest.TestCase):
@@ -176,7 +176,7 @@ class SpeechTests(unittest.TestCase):
         winmm = Mock()
         winmm.mciSendStringW.side_effect = send
         with patch("speech.ctypes.WinDLL", return_value=winmm, create=True):
-            _play_windows(Path("voice.mp3"), lambda: True, 0.5, lambda: commands.append("reveal"))
+            self.assertTrue(_play_windows(Path("voice.mp3"), lambda: True, 0.5, lambda: commands.append("reveal")))
         self.assertTrue(commands[0].startswith('open "'))
         self.assertIn("setaudio sm64npcvoice volume to 500", commands)
         self.assertLess(commands.index("play sm64npcvoice"), commands.index("reveal"))
@@ -190,6 +190,41 @@ class SpeechTests(unittest.TestCase):
             _play_windows(Path("voice.mp3"), lambda: True, 1, lambda: commands.append("reveal"))
         self.assertNotIn("reveal", commands)
         self.assertEqual(commands[-1], "close sm64npcvoice")
+
+    def test_windows_cancel_and_timeout_are_not_successful_completion(self):
+        commands = []
+        def send(command, buffer, length, callback):
+            commands.append(command)
+            if command.startswith("status"):
+                buffer.value = "playing"
+            return 0
+        winmm = Mock()
+        winmm.mciSendStringW.side_effect = send
+        with patch("speech.ctypes.WinDLL", return_value=winmm, create=True):
+            active = Mock(side_effect=[True, False])
+            self.assertFalse(_play_windows(Path("voice.mp3"), active, 0.5))
+            self.assertEqual(commands[-1], "close sm64npcvoice")
+            with patch("speech.time.monotonic", side_effect=[0, 61]):
+                self.assertFalse(_play_windows(Path("voice.mp3"), lambda: True, 0.5))
+            self.assertEqual(commands[-1], "close sm64npcvoice")
+
+    def test_ffplay_completion_timeout_and_failure(self):
+        for status in (0, None, 1):
+            with self.subTest(status=status):
+                process = Mock()
+                process.poll.return_value = status
+                with patch("speech.sys.platform", "linux"), patch("speech.shutil.which", return_value="ffplay"), \
+                     patch("speech.subprocess.Popen", return_value=process), \
+                     patch("speech.time.monotonic", side_effect=[0, 61]):
+                    if status == 1:
+                        with self.assertRaises(RuntimeError):
+                            _play_audio_unlocked(b"ID3audio", lambda: True, 0.5)
+                    else:
+                        self.assertEqual(_play_audio_unlocked(b"ID3audio", lambda: True, 0.5), status == 0)
+                if status is None:
+                    process.terminate.assert_called_once()
+                else:
+                    process.terminate.assert_not_called()
 
 
 if __name__ == "__main__":

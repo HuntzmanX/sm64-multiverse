@@ -58,6 +58,7 @@ static s32 sNativeDialog = -1, sNativePage = -1;
 static struct Object *sNativeObject;
 static char sNativeText[1024], sNativeToken[80];
 static u32 sNativeFrame;
+static s32 sNativeFinished;
 static char sStatus[96] = "ENTER SEND   ESC CLOSE";
 static const char *sActions[] = { "none", "follow", "flee", "approach", "stop",
                                  "hostile", "friendly", "give_coins", "open_cannon" };
@@ -126,8 +127,26 @@ static void clear_native_dialogue(void) {
     char path[512];
     path_for(path, sizeof(path), ".sm64-npc-native.json");
     remove(path);
+    path_for(path, sizeof(path), ".sm64-npc-native-done");
+    remove(path);
     sNativeDialog = sNativePage = -1;
     sNativeObject = NULL;
+    sNativeFinished = 0;
+}
+s32 ai_npc_native_advance(s32 dialog, s32 start, s32 choice) {
+    char path[512], token[80];
+    FILE *file;
+    if (sOpen || sNativeFinished || sNativeDialog < 0 || sNativeDialog != dialog
+        || sNativePage != start || gWarpTransition.isActive) return FALSE;
+    path_for(path, sizeof(path), ".sm64-npc-native-done");
+    file = fopen(path, "r"); if (!file) return FALSE;
+    if (!fgets(token, sizeof(token), file)) token[0] = 0;
+    fclose(file); remove(path);
+    token[strcspn(token, "\r\n")] = 0;
+    if (strcmp(token, sNativeToken)) return FALSE;
+    sNativeFinished = TRUE;
+    /* Finishing speech must never choose a yes/no answer for the player. */
+    return !choice;
 }
 void ai_npc_native_page(s32 dialog, s32 start, s32 lines, const u8 *encoded, s32 visible) {
 #if defined(VERSION_US)
@@ -206,6 +225,7 @@ void ai_npc_native_page(s32 dialog, s32 start, s32 lines, const u8 *encoded, s32
     if (!j || (samePage && gGlobalTimer - sNativeFrame < 30)) return;
     if (samePage) strcpy(token, sNativeToken); /* Refresh liveness without a new playback request. */
     else {
+        sNativeFinished = 0;
         if (!sSession) sSession = (u32)time(NULL) ^ (u32)clock();
         snprintf(token, sizeof(token), "%u-%u-%u", sSession, ++sRequest, gGlobalTimer);
     }
@@ -758,6 +778,7 @@ void ai_npc_render(void) {
 #else
 void ai_npc_native_page(UNUSED s32 dialog, UNUSED s32 start, UNUSED s32 lines,
                         UNUSED const u8 *encoded, UNUSED s32 visible) {}
+s32 ai_npc_native_advance(UNUSED s32 dialog, UNUSED s32 start, UNUSED s32 choice) { return FALSE; }
 void ai_npc_reset(void) {}
 void ai_npc_update(void) {}
 void ai_npc_render(void) {}

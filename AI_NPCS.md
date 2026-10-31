@@ -174,6 +174,14 @@ normal behavior.
 - **First encounter:** generate any missing page recording and save it under
   `npc_audio_cache/` in the repository root. There may be a short generation wait.
 - **Repeat encounter:** load the existing MP3 without another TTS request.
+- When a voiced page finishes playing, the game automatically scrolls to the
+  next page and plays its clip. The final page closes normally, allowing the
+  original reward/cannon/cutscene flow to continue. A final yes/no prompt waits
+  for your selection; speech never chooses an answer for you.
+- Manual A/B skipping still works. Completion receipts belong to one specific
+  page encounter, so skipped, cancelled or old audio cannot advance another page.
+  If voice is disabled, generation fails or playback fails/times out, pages stay
+  under manual control. Uncached next pages may pause while their audio generates.
 - Advancing a page or leaving the dialogue stops the old page's playback.
   Cannon preparation and "ready for blastoff" are separate pages/recordings.
 - If a page's first download has already started when you skip it, the complete

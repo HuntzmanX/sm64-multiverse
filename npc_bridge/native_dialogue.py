@@ -10,7 +10,7 @@ import time
 from concurrent.futures import Executor
 from pathlib import Path
 
-from protocol import TOKEN, ascii_text, read_json
+from protocol import TOKEN, ascii_text, atomic_write, read_json
 from speech import MAX_AUDIO_BYTES, SpeechConfig, play_audio, synthesize
 
 DIRECTIONS = {
@@ -150,7 +150,11 @@ class NativeVoiceService:
             # Only playback follows the live page, so it never talks over a different page.
             audio = self.cache.load_or_generate(request, self.config, lambda: not self._closed.is_set(), self.log)
             if audio is not None and current():
-                play_audio(audio, current, self.config.volume)
+                completed = play_audio(audio, current, self.config.volume)
+                if completed and current():
+                    # A page/session-specific receipt; the game decides whether
+                    # to scroll, close, or wait at a choice prompt.
+                    atomic_write(path.parent / ".sm64-npc-native-done", request["id"] + "\n")
         except Exception as exc:
             detail = f"HTTP {exc.code}" if hasattr(exc, "code") else type(exc).__name__
             self.log(f"Original dialogue voice unavailable ({detail}); normal dialogue continues.", flush=True)

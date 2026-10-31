@@ -131,7 +131,7 @@ def synthesize(config: SpeechConfig, voice: str, text: str, emotion: str,
 
 
 def _play_windows(path: Path, active: Callable[[], bool], volume: float,
-                  on_start: Callable[[], None] = lambda: None) -> None:
+                  on_start: Callable[[], None] = lambda: None) -> bool:
     winmm = ctypes.WinDLL("winmm")
     send = winmm.mciSendStringW
     send.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint, ctypes.c_void_p]
@@ -152,28 +152,28 @@ def _play_windows(path: Path, active: Callable[[], bool], volume: float,
     try:
         command(f"setaudio {alias} volume to {round(volume * 1000)}")
         if not active():
-            return
+            return False
         command(f"play {alias}")
         on_start()
         deadline = time.monotonic() + 60
         while active() and time.monotonic() < deadline:
             if command(f"status {alias} mode").lower() == "stopped":
-                break
+                return True
             time.sleep(0.05)
+        return False
     finally:
         command(f"close {alias}")
 
 
 def _play_audio_unlocked(audio: bytes, active: Callable[[], bool], volume: float,
-               on_start: Callable[[], None] = lambda: None) -> None:
+               on_start: Callable[[], None] = lambda: None) -> bool:
     if not active():
-        return
+        return False
     with tempfile.TemporaryDirectory(prefix="sm64-npc-voice-") as directory:
         path = Path(directory) / "speech.mp3"
         path.write_bytes(audio)
         if sys.platform == "win32":
-            _play_windows(path, active, volume, on_start)
-            return
+            return _play_windows(path, active, volume, on_start)
         player = shutil.which("ffplay")
         if not player:
             raise RuntimeError("Install ffplay or run the companion with native Windows Python")
@@ -190,6 +190,7 @@ def _play_audio_unlocked(audio: bytes, active: Callable[[], bool], volume: float
             code = process.poll()
             if code not in (None, 0) and active():
                 raise RuntimeError(f"Audio player exited with code {code}")
+            return code == 0 and active()
         finally:
             if process.poll() is None:
                 process.terminate()
@@ -201,16 +202,18 @@ def _play_audio_unlocked(audio: bytes, active: Callable[[], bool], volume: float
 
 
 def play_audio(audio: bytes, active: Callable[[], bool], volume: float,
-               on_start: Callable[[], None] = lambda: None) -> None:
+               on_start: Callable[[], None] = lambda: None) -> bool:
+    """Return true only when playback reached its natural end, not cancellation/timeout."""
     # Native dialogue and AI conversations share the Windows MCI device/alias.
     while active():
         if PLAYBACK_LOCK.acquire(timeout=0.05):
             try:
                 if active():
-                    _play_audio_unlocked(audio, active, volume, on_start)
+                    return _play_audio_unlocked(audio, active, volume, on_start)
             finally:
                 PLAYBACK_LOCK.release()
-            return
+            return False
+    return False
 
 
 def prepare_voice(config: SpeechConfig | None, kind: str, text: str, emotion: str,

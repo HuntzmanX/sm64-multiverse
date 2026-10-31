@@ -340,6 +340,57 @@ static void check_scripted_announcement_voices(void) {
     assert(access(".sm64-npc-native.json", F_OK) != 0);
     ai_npc_reset();
 }
+static void native_done(const char *token) {
+    FILE *file = fopen(".sm64-npc-native-done", "w"); assert(file);
+    fprintf(file, "%s\n", token); fclose(file);
+}
+static void check_native_audio_advance(void) {
+    u8 encoded[] = { ASCII_TO_DIALOG('H'), DIALOG_CHAR_NEWLINE,
+                     ASCII_TO_DIALOG('i'), DIALOG_CHAR_TERMINATOR };
+    char token[80];
+    fixture(); mario.interactObj = &npc;
+    ai_npc_native_page(DIALOG_004, 0, 1, encoded, TRUE);
+    strcpy(token, sNativeToken);
+    assert(!ai_npc_native_advance(DIALOG_004, 0, FALSE)); /* Still speaking/no completion. */
+    native_done("0-0-0");
+    assert(!ai_npc_native_advance(DIALOG_004, 0, FALSE));
+    assert(access(".sm64-npc-native-done", F_OK) != 0);
+    native_done(token);
+    assert(!ai_npc_native_advance(DIALOG_005, 0, FALSE));
+    assert(!ai_npc_native_advance(DIALOG_004, 2, FALSE));
+    assert(ai_npc_native_advance(DIALOG_004, 0, FALSE));
+    assert(!ai_npc_native_advance(DIALOG_004, 0, FALSE));
+    native_done(token); /* Duplicates and heartbeat refreshes cannot skip twice. */
+    gGlobalTimer += 30;
+    ai_npc_native_page(DIALOG_004, 0, 1, encoded, TRUE);
+    assert(!ai_npc_native_advance(DIALOG_004, 0, FALSE));
+    ai_npc_native_page(DIALOG_004, 0, 1, encoded, FALSE); /* Normal scroll/manual skip. */
+    ai_npc_native_page(DIALOG_004, 2, 1, encoded, TRUE);
+    assert(strcmp(token, sNativeToken));
+    native_done(token); assert(!ai_npc_native_advance(DIALOG_004, 2, FALSE));
+    native_done(sNativeToken); assert(ai_npc_native_advance(DIALOG_004, 2, FALSE)); /* Final page can close. */
+
+    ai_npc_native_page(DIALOG_004, 2, 1, encoded, FALSE);
+    ai_npc_native_page(DIALOG_004, 2, 1, encoded, TRUE);
+    native_done(sNativeToken);
+    assert(!ai_npc_native_advance(DIALOG_004, 2, TRUE)); /* Never select a response. */
+    assert(access(".sm64-npc-native-done", F_OK) != 0);
+    assert(!ai_npc_native_advance(DIALOG_004, 2, FALSE));
+
+    ai_npc_native_page(DIALOG_004, 2, 1, encoded, FALSE);
+    ai_npc_native_page(DIALOG_004, 2, 1, encoded, TRUE);
+    native_done(sNativeToken); tick(); key(20); assert(sOpen);
+    assert(access(".sm64-npc-native-done", F_OK) != 0);
+    assert(!ai_npc_native_advance(DIALOG_004, 2, FALSE));
+    key(1);
+    ai_npc_native_page(DIALOG_004, 2, 1, encoded, TRUE);
+    native_done(sNativeToken); gWarpTransition.isActive = TRUE;
+    assert(!ai_npc_native_advance(DIALOG_004, 2, FALSE));
+    gWarpTransition.isActive = FALSE;
+    ai_npc_reset();
+    assert(access(".sm64-npc-native-done", F_OK) != 0);
+    assert(!ai_npc_native_advance(DIALOG_004, 2, FALSE));
+}
 int main(void) {
     char temp[] = "/tmp/sm64-npc-test-XXXXXX", token[80];
     assert(mkdtemp(temp)); assert(chdir(temp) == 0);
@@ -396,6 +447,7 @@ int main(void) {
     check_npc_conversation_end();
     check_original_dialogue_voice();
     check_scripted_announcement_voices();
+    check_native_audio_advance();
     puts("Game-side NPC tests passed: engine gravity and grounded movement, UI history, scroll, voice reveals, camera framing, input, stale replies, cancellation, single execution, capabilities, timeout, hostility.");
     ai_npc_reset();
     remove(".sm64-npc-response"); remove(".sm64-npc-result.json");

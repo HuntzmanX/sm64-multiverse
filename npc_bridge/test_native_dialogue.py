@@ -181,6 +181,58 @@ class NativeCacheTests(unittest.TestCase):
                 player.assert_called_once()
             service.close()
 
+    def test_finished_page_signals_only_after_playback_and_chains_to_next(self):
+        path = self.root / ".sm64-npc-native.json"
+        done = self.root / ".sm64-npc-native-done"
+        for cached in (False, True):
+            with self.subTest(cached=cached), ThreadPoolExecutor(max_workers=1) as pool:
+                service = NativeVoiceService(self.root, self.config, pool, self.log)
+                pages = [self.request, self.request | dict(id="1-2-4", page=12, text="Next page!")]
+                with patch("native_dialogue.synthesize", return_value=b"ID3recording") as synth:
+                    for page in pages:
+                        done.unlink(missing_ok=True)
+                        path.write_text(json.dumps(page))
+                        def play(audio, active, volume):
+                            self.assertTrue(active())
+                            self.assertFalse(done.exists())
+                            return True
+                        with patch("native_dialogue.play_audio", side_effect=play) as player:
+                            service.poll(self.root)
+                            service._future.result(2)
+                            self.assertEqual(done.read_text(), page["id"] + "\n")
+                            service.poll(self.root)
+                            player.assert_called_once()  # No repeat playback at a waiting choice.
+                    self.assertEqual(synth.call_count, 0 if cached else 2)
+                service.close()
+
+    def test_skips_failures_timeouts_and_muted_audio_never_signal_completion(self):
+        path = self.root / ".sm64-npc-native.json"
+        done = self.root / ".sm64-npc-native-done"
+        for scenario in ("skipped", "new-page", "ai-chat", "cancelled", "failed", "muted"):
+            with self.subTest(scenario=scenario), ThreadPoolExecutor(max_workers=1) as pool:
+                path.write_text(json.dumps(self.request))
+                (self.root / ".sm64-npc-request.json").unlink(missing_ok=True)
+                config = replace(self.config, bobomb_voice="") if scenario == "muted" else self.config
+                service = NativeVoiceService(self.root, config, pool, self.log)
+                def play(audio, active, volume):
+                    if scenario == "skipped":
+                        path.unlink()
+                    elif scenario == "new-page":
+                        path.write_text(json.dumps(self.request | dict(id="1-2-4", page=12)))
+                    elif scenario == "ai-chat":
+                        (self.root / ".sm64-npc-request.json").write_text("{}")
+                    elif scenario == "failed":
+                        raise RuntimeError("device failed")
+                    return scenario != "cancelled"  # Includes a player timeout/cancellation result.
+                with patch("native_dialogue.synthesize", return_value=b"ID3recording"), \
+                     patch("native_dialogue.play_audio", side_effect=play) as player:
+                    service.poll(self.root)
+                    service._future.result(2)
+                    self.assertFalse(done.exists())
+                    if scenario == "muted":
+                        player.assert_not_called()
+                service.close()
+
 
 if __name__ == "__main__":
     unittest.main()

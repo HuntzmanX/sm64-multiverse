@@ -1744,7 +1744,9 @@ void render_dialog_entries(void) {
             gDialogBoxOpenTimer = 0.0f;
 
             if ((gPlayer3Controller->buttonPressed & A_BUTTON)
-                || (gPlayer3Controller->buttonPressed & B_BUTTON)) {
+                || (gPlayer3Controller->buttonPressed & B_BUTTON)
+                || ai_npc_native_advance(gDialogID, gDialogTextPos,
+                                         gLastDialogPageStrPos == -1 && gLastDialogResponse == 1)) {
                 if (gLastDialogPageStrPos == -1) {
                     handle_special_dialog_text(gDialogID);
                     gDialogBoxState = DIALOG_STATE_CLOSING;
